@@ -1,0 +1,29 @@
+# AGENTS.md
+
+- Harness、Codex 执行以及 AgentCore 模型、MCP、Skill 资源访问统一使用 Node.js；生产只保留 `alibabacloud-agentcore-sdk` Node SDK，不再维护 Python Bridge 双运行时。
+- 最终镜像以官方 Node 22 slim 为基础。镜像安装 `git` 作为 Agent 通用版本控制工具；仍安装最小 `python3`，仅供平台 launcher/APM 注入和 Runloop Skill 解包脚本使用，不安装 Python AgentCore SDK。
+- 新接口在 `src/app.ts`，AgentCore SDK 封装在 `src/runtime.ts`，Codex 消费的 loopback 协议在 `src/internal-api.ts`，配置在 `src/config.ts`。
+- Codex 需要 OpenAI 兼容模型 HTTP 与 MCP HTTP，因此同一 Node 进程暴露 `/model/v1` 与 `/mcp`。它们必须使用启动时随机内部 Token 鉴权，不能接受用户配置的内部 Token，也不能把 Token 返回或写入日志。
+- 模型、资源、环境和工作目录属于部署配置，不接受请求覆盖。Harness 不定义控制面地址；`AgentCore.auto()` 读取平台配置和身份。平台配置不得注入错误的 `AGENTCORE_CONTROL_ENDPOINT` 覆盖 SDK 默认 endpoint。
+- Bug 先写失败回归测试，再修代码。验证至少包含 `npm run typecheck`、`npm run test:coverage`、`npm run build`；修改 vendored Runloop 时再运行 `npm run test:upstream`。
+- 环境变量与行为变更必须同步更新 `README.md` 和 `.env.example`。不得提交 `.env`、API Key、Token、平台身份文件、认证文件或运行日志。
+- 复杂条件、长三目和多层内联对象要拆成命名函数、局部变量或清晰的 `if` 分支。三目只用于短小且一眼可读的二选一值。
+- `AGENTCORE_EXECUTION` 默认 `local`。`local` 与 `tools-only` 只允许 Codex；local 文件和 Shell 使用 Codex 原生 OS 沙箱，授予当前 uid 根读写、绑定 Skill 只读并禁止命令联网；预检失败必须终止，不得 bypass。sandbox 文件和 Shell 由 Runloop MCP 转发远端，失败或超时不得回退本地。
+- `AGENTCORE_WORKDIR` 只在 local 模式指定 AgenticFS 工作根；`AGENTCORE_ARTIFACT_ROOT` 是独立的 OSS 交付根。local 未配置工作根时自动使用 `/tmp/agentcore-user-work` 作为临时工作根；显式工作根仍优先。启动阶段不访问存储；请求时均按 `<root>/<uid>/<conversationId>` 隔离。配置根、用户根和会话根必须安全校验，存储失败只影响当前请求。
+- 最终文件只能通过自动注册的 `publish_artifact` 从工作根发布到 OSS 根。可信 uid/conversationId 来自每次 MCP 资源的固定请求头，不接受工具参数中的身份。发布拒绝穿越、符号链接和覆盖，且不可依赖 OSS 上非原子的 rename。省略 `artifact_path` 时，同一会话重复发布同名文件自动使用 `-2`、`-3` 后缀；显式目标冲突仍拒绝。发布失败返回安全错误码并记录不含路径/凭证的 `mcp_tool_failed` 日志。工具只返回 `/f/<file-id>`，并在会话发布目录的 `.files.json` 保存 ID 到相对路径的映射，不得把 OSS/FUSE 绝对路径暴露给模型。
+- Skill 版本只使用 `AGENTCORE_SKILLS=name@version,other-name`。不带 `@` 时启动解析最新版；显式版本失败不得回退。同一名称、空名称/版本和多个 `@` 必须拒绝。
+- 进程 readiness 不依赖远端资源发现；模型、MCP、Skill 通过 `/initialize` 或首次请求懒加载，控制面故障不得阻止 8080 启动。
+- 模型、MCP、Skill、`/initialize` 与请求准备失败必须输出结构化安全诊断：阶段、资源名、异常类型、SDK code、HTTP status、requestId；异常 message/stack、SDK 响应正文、Token 和凭证不得进入响应或日志。
+- 每个 MCP 的连接和 `listTools` 共用独立 deadline（`AGENTCORE_MCP_DISCOVERY_TIMEOUT_MS`，默认 10000 ms）；失败或超时只产生带 diagnostics 的资源 warning 并跳过该 MCP，不得阻塞模型、其它 MCP 或 Skill。
+- 首次初始化记录 runner、总 manifest、model、逐个 MCP、逐个 Skill 的阶段耗时与结果。AgentLoop telemetry 启用时写 OTel span；不可用或写入失败时输出字段一致的 `agent_startup_timing` stdout 日志。埋点必须 fail-open，且不得包含异常正文、凭证或用户内容。
+- HTTP listener ready 后后台启动资源与目标 CLI 预热；后台预热、`/initialize` 和首请求共享缓存中的初始化工作，只预热配置的 Agent CLI。可选资源失败通过 `/initialize` 的 `resourceStatus: degraded`、`resourceWarnings[].diagnostics` 和可观测数据上抛，不得把 HTTP readiness 或模型主链路判失败。
+- Skill SDK 缓存使用 SDK 原生 `AGENTCORE_SKILL_WORKSPACE_DIR`。生产镜像默认指向 `/mnt/agenticfs/shared/.agentcore/skills`，按 `workspaceId/name/version` 持久化且不按 uid 分区；无挂载时仅具备容器内临时语义。平台注入的控制面和身份变量不得放入用户配置模板。
+- local 模式下，`installSkills()` 只在会话 `.agents/skills` 下创建指向 SDK Skill 根的安全目录投影，不复制包内容。SDK 根是内容和 Skill 本地依赖的持久事实来源；依赖链接只允许位于 `.runtime`/`.venv`/`venv`/`node_modules`，并须留在 Skill 根内或指向白名单系统运行时；系统提示词和脚本相对路径必须使用 `installSkills()` 返回的投影根。业务 cwd 与 Skill 根保持分离。
+- `AGENTCORE_MODEL_ENABLE_THINKING` 默认 false。内部模型适配器必须删除调用方的 thinking/reasoning 提示，再由当前 SDK 路径写入布尔 `enable_thinking`，保证部署策略优先。
+- MCP 工具结果必须保留 `content`、`structuredContent`、`isError` 等结构；错误响应不得泄露 SDK、凭证、上游正文或内部 Token。
+- AG-UI 用户消息允许携带最多 10 个已确认的 OSS 附件引用；适配层必须保持消息顺序并转换为 `user.attachment`，不得把附件降级成不受约束的提示词 URL。对象归属、ETag 与物化边界由 AgentCore 包装层在调用 vendored Runloop 前校验；vendored Runloop 只消费已物化、Agent 可访问的路径，不访问对象存储。
+- Chat 为已确认附件附带 10 分钟有效的单对象 HTTPS 读取票据；包装层必须在启动 Runner 前校验 OSS 主机、当前 uid/会话前缀、ETag、大小和符号链接边界，物化到当前 cwd 的 `uploads/`，并只把改写后的本地路径交给模型。读取票据不得进入模型事件或日志。
+- Codex 图片入口保留原生模型侧名称 `view_image` / `image_gen__imagegen`，实际执行由会话内 Runloop MCP 转发到百炼。`IMAGE_ABLE` 是 AgentCore 凭证名，默认 `DASHBOARD_API_KEY`，设为 `0` 关闭；密钥只能通过 `AgentCore.credentials.get()` 按工作负载身份动态取得，不得进入请求、工具参数、结果或日志。识图和参考图只允许读取当前 uid/conversation 工作目录内的 PNG/JPEG/WebP，拒绝穿越、符号链接和超过 8 MiB 的文件；生成结果只能写入当前会话 `.generated-images/`。默认 `qwen-image-plus` 生图走百炼异步 `text2image/image-synthesis` 并轮询 `task_id`；不得用同步 `multimodal-generation` 请求该模型。结果兼容旧协议 `output.results[].url` 与 V2 `output.choices[].message.content[].image`，下载只允许 HTTPS 阿里云 OSS 官方域名且不携带 Authorization。百炼失败结果只允许带脱敏后的 HTTP 状态、code、request_id，禁止返回 message 或原始响应。
+- 部署和运行时环境变量统一使用 `AGENTCORE_` 前缀；旧前缀不保留兼容读取。`AGENTCORE_RUNLOOP_API_TOKEN` 本身已经是 `AGENTCORE_` 前缀，名称保持不变。
+- STS Broker 与 Runloop 同进程始终暴露 `/v1/sts`，默认依赖与 AG-UI 相同的 AgentCore 公网网关鉴权。协议只有 `version: 1`，且 `identity` 与可信业务 Policy 均为必填，不存在无 Policy 的完整 Workload Role STS 出口。只有 Broker Key ID 与 Secret 成对配置时才附加请求/响应 HMAC、时间窗和实例内 nonce 防重放；半配置必须启动失败。身份链路只使用公开 Node SDK：运行时 SA → Controller `/api/v1/workload/token` 根据当前 Agent 记录的 `workload_identity_name` 获取机器 WAT → `AssumeRoleForWorkloadIdentity`。用户/JWT 身份只绑定请求校验、签名、缓存键和可信业务 Policy，不作为云端 WAT 身份；请求 Policy 必须由可信业务服务端在鉴权和资源归属校验后生成。Workload Role 始终是权限上限。错误与日志只能保留清洗后的阶段、错误码、请求 ID 和 HTTP 状态，不得输出 WAT、STS、SDK 消息或响应体。
+- STS Broker Secret 必须是随机 32 字节密钥，Agent ID 等公开标识只能用作 Key ID，不能作为 Secret。机器 WAT 只能由 Controller 根据 SA Token 和当前 Agent 记录解析，禁止用 `agent.yaml.metadata.runtimeName` 或调用方环境变量指定 Workload Identity。

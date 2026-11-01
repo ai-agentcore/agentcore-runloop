@@ -1,0 +1,448 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://runloop.dev/schemas/events.json",
+  "title": "Runloop 事件协议",
+  "description": "24 种事件类型，覆盖 run/user/message/reasoning/toolcall/toolresult/plan/turn 八大领域。所有事件支持 parentToolCallId（N 级嵌套委派）。HITL 建模为 toolcall 的挂起相位（toolcall.suspend），无独立 hitl.* 命名空间（AD-026）。",
+
+  "$defs": {
+    "BaseEvent": {
+      "type": "object",
+      "required": ["id", "type", "timestamp", "conversationId"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "conversationId": { "type": "string" },
+        "runId": { "type": "string", "description": "本次 /v1/run 请求标识（每次唯一）。runner 创建事件时统一带上。" },
+        "parentToolCallId": { "type": "string", "description": "If set, this event belongs to a nested delegation (child agent). Points to the toolCallId of the parent toolcall.start. Follow the chain to reconstruct the full call tree." },
+        "metadata": { "type": "object", "additionalProperties": true }
+      }
+    },
+
+    "InputBase": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "metadata": { "type": "object", "additionalProperties": true }
+      }
+    },
+
+    "EventTypeEnum": {
+      "type": "string",
+      "enum": [
+        "run.start", "run.end", "run.interrupt", "run.error", "run.usage",
+        "user.message", "user.attachment", "user.command",
+        "message.start", "message.delta", "message.end",
+        "reasoning.start", "reasoning.delta", "reasoning.end",
+        "toolcall.start", "toolcall.delta", "toolcall.end", "toolcall.suspend",
+        "toolresult.start", "toolresult.delta", "toolresult.end",
+        "plan.update",
+        "turn.start", "turn.end"
+      ]
+    },
+
+    "ErrorCodeEnum": {
+      "type": "string",
+      "description": "run.error / 适配器错误事件的错误码枚举。",
+      "enum": [
+        "LOOP_ERROR",
+        "PROCESS_ERROR",
+        "CODEX_ERROR",
+        "CODEX_TURN_FAILED",
+        "ACP_INIT_FAILED",
+        "ACP_SESSION_FAILED",
+        "ACP_PROMPT_FAILED",
+        "TOOL_ERROR",
+        "TOOL_FAILED",
+        "HITL_UNRESOLVED"
+      ]
+    },
+
+    "ErrorObject": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "$ref": "#/$defs/ErrorCodeEnum" },
+        "message": { "type": "string" },
+        "details": {}
+      }
+    },
+
+    "HitlOption": {
+      "type": "object",
+      "required": ["optionId", "label", "kind"],
+      "properties": {
+        "optionId": { "type": "string" },
+        "label": { "type": "string" },
+        "kind": { "type": "string", "enum": ["allow_once", "allow_always", "allow_modified", "reject_once", "reject_always"] },
+        "matchWords": { "type": "array", "items": { "type": "string" }, "description": "NL 降级通道的 i18n 触发词（可多个）。纯文本上游下，resume 时把用户回复归一化后与此完全相等匹配到本 option（确定性、replay 安全，见 AD-026 增补）。" }
+      }
+    },
+
+    "PlanEntry": {
+      "type": "object",
+      "required": ["content", "status"],
+      "properties": {
+        "content": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "in_progress", "completed"] },
+        "priority": { "type": "string", "enum": ["high", "medium", "low"] }
+      }
+    },
+
+    "run.start": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "run.start" },
+        "agentCli": { "type": "string" },
+        "model": { "type": "string" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "agentCli"]
+    },
+
+    "run.end": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "run.end" },
+        "reason": { "type": "string", "enum": ["completed", "interrupted", "error", "timeout", "hitl_pending", "tool_pending"] }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "reason"]
+    },
+
+    "run.interrupt": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "run.interrupt" },
+        "reason": { "type": "string" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "reason"]
+    },
+
+    "run.error": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "run.error" },
+        "error": { "$ref": "#/$defs/ErrorObject" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "error"]
+    },
+
+    "run.usage": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "run.usage" },
+        "inputTokens": { "type": "integer" },
+        "outputTokens": { "type": "integer" },
+        "cacheReadTokens": { "type": "integer" },
+        "cacheWriteTokens": { "type": "integer" },
+        "costUsd": { "type": "number" },
+        "model": { "type": "string" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId"]
+    },
+
+    "user.message": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "user.message" },
+        "content": { "type": "string" },
+        "role": { "const": "user" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "content", "role"]
+    },
+
+    "user.attachment": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "user.attachment" },
+        "uri": { "type": "string", "description": "Agent-accessible attachment path or logical reference. A trusted upstream adapter must materialize remote bytes into the selected execution workspace before calling Runloop." },
+        "etag": { "type": "string", "description": "Optional upstream integrity/version metadata. Runloop does not fetch storage objects or consume this value." },
+        "region": { "type": "string", "description": "Optional upstream storage metadata retained for compatibility. Runloop is storage-agnostic." },
+        "size": { "type": "integer", "minimum": 0, "description": "Optional attachment size in bytes, validated by the upstream materializer." },
+        "mimeType": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "uri"]
+    },
+
+    "user.command": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "user.command" },
+        "command": { "type": "string", "enum": ["resolve"], "description": "HITL 审批续接。中断不走此事件（用 POST /v1/interrupt）。" },
+        "toolCallId": { "type": "string", "description": "要解决的挂起 toolcall 的 toolCallId —— HITL 唯一绑定键。" },
+        "selectedOptionId": { "type": "string", "description": "选中的 option id，引用 toolcall.suspend.options[].optionId；allow/reject、once/always 由 option 的 kind 派生。" },
+        "targetEventId": { "type": "string", "description": "可选，指向 toolcall.suspend 事件 id（与 toolCallId 二选一冗余引用）。" },
+        "toolName": { "type": "string", "description": "可选，断言所解决 suspend 的工具名；提供时必须与被引用 suspend 的 toolName 一致，否则整个 run 被拒（AD-026 #11，防解决错对象）。" },
+        "parentToolCallId": { "type": "string", "description": "可选，断言所解决 suspend 的父委派 toolCallId（嵌套 HITL）；提供时必须与被引用 suspend 的 parentToolCallId 一致，否则整个 run 被拒（AD-026 #11）。" },
+        "actorId": { "type": "string", "description": "审计字段（由受信网关注入，runloop 只记录）。" },
+        "tenantId": { "type": "string", "description": "审计字段（由受信网关注入）。" },
+        "decisionTime": { "type": "number", "description": "审计字段：审批决策时间（毫秒）。" },
+        "reason": { "type": "string", "description": "审计字段：审批理由（自由文本）。" },
+        "payload": { "type": "object", "additionalProperties": true }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "command"]
+    },
+
+    "message.start": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "message.start" },
+        "messageId": { "type": "string", "description": "聚合 id：同一条 assistant message 的 start/delta/end 共享同一个 messageId（由 runloop 合并点 MergeNormalizer 统一盖上，跨流/孤儿 delta/再合成都一致）。上游据此把流式片段归并成一条消息。与 toolcall 的 toolCallId、reasoning 的 reasoningId 对称。" },
+        "role": { "const": "assistant" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "role"]
+    },
+
+    "message.delta": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "message.delta" },
+        "messageId": { "type": "string", "description": "聚合 id：与本条 message 的 start/end 相同（见 message.start.messageId）。" },
+        "content": { "type": "string" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "content"]
+    },
+
+    "message.end": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "message.end" },
+        "messageId": { "type": "string", "description": "聚合 id：与本条 message 的 start/delta 相同（见 message.start.messageId）。" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId"]
+    },
+
+    "reasoning.start": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "reasoning.start" },
+        "reasoningId": { "type": "string", "description": "聚合 id：同一段 reasoning 的 start/delta/end 共享同一个 reasoningId（由 MergeNormalizer 统一盖上）。与 message 的 messageId 对称、独立命名空间。" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId"]
+    },
+
+    "reasoning.delta": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "reasoning.delta" },
+        "reasoningId": { "type": "string", "description": "聚合 id：与本段 reasoning 的 start/end 相同（见 reasoning.start.reasoningId）。" },
+        "content": { "type": "string", "description": "模型思考（reasoning）的流式增量。与 message.* 对称、独立命名空间，不混入 assistant 正文。" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "content"]
+    },
+
+    "reasoning.end": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "reasoning.end" },
+        "reasoningId": { "type": "string", "description": "聚合 id：与本段 reasoning 的 start/delta 相同（见 reasoning.start.reasoningId）。" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId"]
+    },
+
+    "toolcall.start": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "toolcall.start" },
+        "toolCallId": { "type": "string" },
+        "toolName": { "type": "string" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "toolCallId", "toolName"]
+    },
+
+    "toolcall.delta": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "toolcall.delta" },
+        "toolCallId": { "type": "string" },
+        "chunk": { "type": "string" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "toolCallId", "chunk"]
+    },
+
+    "toolcall.end": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "toolcall.end" },
+        "toolCallId": { "type": "string" },
+        "args": { "type": "object", "additionalProperties": true }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "toolCallId", "args"]
+    },
+
+    "toolcall.suspend": {
+      "description": "一个 toolcall 挂起待审批（HITL）。夹在 toolcall.end 与 toolresult.* 之间，锚定恰好一个 toolcall，toolCallId 即唯一绑定键。本轮不产 toolresult，结果延迟到恢复后的下一个 run（execute-on-resume）。",
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "toolcall.suspend" },
+        "toolCallId": { "type": "string" },
+        "toolName": { "type": "string" },
+        "args": { "type": "object", "additionalProperties": true, "description": "展示用·非权威。execute-on-resume 用历史 toolcall.end.args，不认此字段（仅展示、可脱敏）。" },
+        "bindingHash": { "type": "string", "description": "审批绑定哈希（H5）：hash(toolName + 解析后执行端点/描述符)。execute-on-resume 前重算当前 resources 的同款哈希，不符 ⇒ 同名工具在批准后被指向了不同 endpoint/实现（防『批 A 执行 B』）⇒ 拒绝执行、需重新审批。仅资源型工具（openapi/委派/MCP）含端点签名；内置 bash/file 无端点则只绑 toolName。args 不进哈希（execute-on-resume 用不可变历史 args 或 allow_modified 的 payload，天然绑定）。" },
+        "reason": { "type": "string", "enum": ["static_rule", "model_request", "llm_judge"] },
+        "interactionKind": { "type": "string", "enum": ["tool_call", "input_required", "confirmation"], "description": "AG-UI 交互语义类别（与触发源 reason 正交）：tool_call=工具执行前置审批、input_required=向用户索取结构化输入、confirmation=是非确认。源自 ag-ui 子 agent interrupt 的 reason；缺省=未声明（按 options/prompt 处理）。input_required 时 options 通常为空、改由 responseSchema 描述输入。" },
+        "responseSchema": { "type": "object", "additionalProperties": true, "description": "resume 时期望的 payload 结构（JSON Schema），由 ag-ui 子 agent interrupt 透传。input_required 类用它驱动上游渲染输入控件 + 校验；is-non-题（confirmation）一般无此字段、用 options。" },
+        "expiresAt": { "type": "string", "description": "可选 ISO-8601 过期时刻（ag-ui interrupt 透传）。过期后该挂起不应再被恢复；event-sourced 下生命周期主要由上游管理，本字段仅作信号。" },
+        "prompt": { "type": "string", "description": "NL 降级通道的提问文本（i18n，由 out-of-band phrasing service 生成并持久化）。纯文本上游把它作为 assistant 文本呈现给用户；富通道（clientTools/原生 UI）用 options 即可，可忽略本字段。" },
+        "surface": { "type": "string", "enum": ["native", "client_tool", "nl"], "description": "呈现选择建议（AD-026 增补 · 触发 ⊥ 呈现）：runloop 按 hitl.clientCapabilities 配置选定该 suspend 怎么递给人——native=客户端原生消费 toolcall.suspend 事件、client_tool=映射到客户端工具渲染（见 renderTool）、nl=自然语言兜底。runloop 恒发全表征（options+prompt+matchWords+responseSchema），本字段仅建议，客户端/bridge 仍可自选、NL 永远兜底。缺省=未声明（按现行为 native 处理）。" },
+        "renderTool": { "type": "string", "description": "surface=client_tool 时的目标客户端工具名（renderTools 显式映射或 F3 纯 HITL LLM 选定）。其余 surface 不设。" },
+        "options": { "type": "array", "items": { "$ref": "#/$defs/HitlOption" } }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "toolCallId", "toolName", "reason", "options"]
+    },
+
+    "toolresult.start": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "toolresult.start" },
+        "toolCallId": { "type": "string" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "toolCallId"]
+    },
+
+    "toolresult.delta": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "toolresult.delta" },
+        "toolCallId": { "type": "string" },
+        "delta": { "type": "string" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "toolCallId", "delta"]
+    },
+
+    "toolresult.end": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "toolresult.end" },
+        "toolCallId": { "type": "string" },
+        "result": {},
+        "isError": { "type": "boolean", "description": "true 即工具失败（模型自行处理，与 run 失败无关）。" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "toolCallId", "result"]
+    },
+
+    "plan.update": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "plan.update" },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/PlanEntry" } }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "entries"]
+    },
+
+    "turn.start": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "turn.start" },
+        "turnIndex": { "type": "integer" }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "turnIndex"]
+    },
+
+    "turn.end": {
+      "allOf": [{ "$ref": "#/$defs/BaseEvent" }],
+      "properties": {
+        "type": { "const": "turn.end" },
+        "turnIndex": { "type": "integer" },
+        "stopReason": { "type": "string", "enum": ["end_turn", "max_tokens", "max_turns", "cancelled", "hitl_pending", "tool_pending"] }
+      },
+      "required": ["id", "type", "timestamp", "conversationId", "turnIndex", "stopReason"]
+    },
+
+    "InputEvent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "content"],
+          "additionalProperties": true,
+          "properties": {
+            "id": { "type": "string" },
+            "type": { "const": "user.message" },
+            "timestamp": { "type": "number" },
+            "content": { "type": "string" },
+            "metadata": { "type": "object", "additionalProperties": true }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "uri"],
+          "additionalProperties": true,
+          "properties": {
+            "id": { "type": "string" },
+            "type": { "const": "user.attachment" },
+            "timestamp": { "type": "number" },
+            "uri": { "type": "string" },
+            "etag": { "type": "string" },
+            "region": { "type": "string" },
+            "size": { "type": "integer", "minimum": 0 },
+            "mimeType": { "type": "string" },
+            "name": { "type": "string" },
+            "metadata": { "type": "object", "additionalProperties": true }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "command"],
+          "additionalProperties": true,
+          "properties": {
+            "id": { "type": "string" },
+            "type": { "const": "user.command" },
+            "timestamp": { "type": "number" },
+            "command": { "type": "string", "enum": ["resolve"] },
+            "toolCallId": { "type": "string" },
+            "selectedOptionId": { "type": "string" },
+            "targetEventId": { "type": "string" },
+            "payload": { "type": "object", "additionalProperties": true },
+            "metadata": { "type": "object", "additionalProperties": true }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type"],
+          "additionalProperties": true,
+          "properties": {
+            "id": { "type": "string" },
+            "type": { "type": "string" },
+            "timestamp": { "type": "number" },
+            "metadata": { "type": "object", "additionalProperties": true }
+          }
+        }
+      ]
+    },
+
+    "RunloopEvent": {
+      "discriminator": { "propertyName": "type" },
+      "oneOf": [
+        { "$ref": "#/$defs/run.start" },
+        { "$ref": "#/$defs/run.end" },
+        { "$ref": "#/$defs/run.interrupt" },
+        { "$ref": "#/$defs/run.error" },
+        { "$ref": "#/$defs/run.usage" },
+        { "$ref": "#/$defs/user.message" },
+        { "$ref": "#/$defs/user.attachment" },
+        { "$ref": "#/$defs/user.command" },
+        { "$ref": "#/$defs/message.start" },
+        { "$ref": "#/$defs/message.delta" },
+        { "$ref": "#/$defs/message.end" },
+        { "$ref": "#/$defs/reasoning.start" },
+        { "$ref": "#/$defs/reasoning.delta" },
+        { "$ref": "#/$defs/reasoning.end" },
+        { "$ref": "#/$defs/toolcall.start" },
+        { "$ref": "#/$defs/toolcall.delta" },
+        { "$ref": "#/$defs/toolcall.end" },
+        { "$ref": "#/$defs/toolcall.suspend" },
+        { "$ref": "#/$defs/toolresult.start" },
+        { "$ref": "#/$defs/toolresult.delta" },
+        { "$ref": "#/$defs/toolresult.end" },
+        { "$ref": "#/$defs/plan.update" },
+        { "$ref": "#/$defs/turn.start" },
+        { "$ref": "#/$defs/turn.end" }
+      ]
+    }
+  },
+
+  "$ref": "#/$defs/RunloopEvent"
+}

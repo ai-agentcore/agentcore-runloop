@@ -1,0 +1,14 @@
+{
+  "project": "runloop",
+  "commit": "d61fcc6dc04ca32f7c1d0bc165b96f9d60def432",
+  "source": "vendored runloop source snapshot",
+  "patches": [
+    "SSRF exact trusted endpoint registration for the local AgentCore bridge",
+    "Replace AgentRun-specific identity and environment assumptions with neutral runtime prompt",
+    "Preserve structured Codex function_call_output content when translating to Chat Completions",
+    "Align local MCP file/shell workdir with agent.cwd while keeping per-session runtime files separate",
+    "Keep active model WebSocket requests alive beyond the idle timeout; cancel upstream on disconnect and suppress stale deltas",
+    "Use the configured run deadline for Codex instead of a hidden five-minute timer; cancellation takes precedence over maxTurns",
+    "Use valid Codex API-key auth in exec, ACP and prewarm to avoid ChatGPT user-settings requests and their five-second startup timeout; persist only the local proxy token"
+  ]
+}

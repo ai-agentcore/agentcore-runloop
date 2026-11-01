@@ -1,0 +1,15 @@
+{
+  "threadId": "thread-direct-demo",
+  "runId": "run-direct-demo",
+  "messages": [
+    {
+      "id": "message-direct-demo",
+      "role": "user",
+      "content": "Introduce yourself in one sentence."
+    }
+  ],
+  "tools": [],
+  "context": [],
+  "state": {},
+  "forwardedProps": {}
+}

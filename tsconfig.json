@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
+    "lib": ["ES2022"], "strict": true, "esModuleInterop": true,
+    "skipLibCheck": true, "resolveJsonModule": true, "outDir": "dist", "rootDir": "."
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "vendor/runloop/src/**/*.ts"],
+  "exclude": ["vendor/runloop/src/cli", "vendor/runloop/src/server/index.ts"]
+}

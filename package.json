@@ -1,0 +1,55 @@
+{
+  "name": "agentcore-runloop",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "description": "Runloop CLI execution engines powered by Alibaba Cloud AgentCore",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "start": "node scripts/start.mjs",
+    "smoke:sandbox": "node scripts/smoke-agent-sandbox.mjs",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:upstream": "cd vendor/runloop && vitest run tests/acp tests/events tests/provider tests/mcp --pool=forks --maxWorkers=1",
+    "verify": "npm run typecheck && npm run test:coverage && npm run build",
+    "dev:mock": "AGENTCORE_MOCK=true tsx src/main.ts",
+    "test:coverage": "vitest run --coverage",
+    "smoke:native-service": "node scripts/smoke-native-service.mjs",
+    "verify:linux-sessions": "node scripts/verify-linux-sessions.mjs"
+  },
+  "dependencies": {
+    "@alicloud/agentidentitydata20251127": "2.0.0",
+    "@alicloud/agentrun20250910": "^5.9.1",
+    "@alicloud/fcsandbox20260509": "^1.5.1",
+    "@alicloud/openapi-core": "1.0.8",
+    "@darabonba/typescript": "1.0.5",
+    "@hono/node-server": "^1.14.0",
+    "@loongsuite/otel-util-genai": "0.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "0.57.2",
+    "@opentelemetry/resources": "1.30.1",
+    "@opentelemetry/sdk-trace-base": "1.30.1",
+    "@opentelemetry/sdk-trace-node": "1.30.1",
+    "alibabacloud-agentcore-sdk": "0.1.2",
+    "dotenv": "^17.4.2",
+    "e2b": "2.31.0",
+    "hono": "^4.7.0",
+    "nanoid": "^5.1.0",
+    "pino": "^10.3.1",
+    "tsx": "^4.19.0",
+    "ws": "^8.21.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^3.1.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0"
+  }
+}

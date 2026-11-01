@@ -1,0 +1,53 @@
+.git
+node_modules
+.venv
+.pytest_cache
+workspaces
+.agentcore-skills
+logs
+coverage
+dist
+verification
+*.pcap
+
+# Environment files: keep only the documented template
+.env
+.env.*
+!.env.example
+
+# Credentials and local runtime state
+.ssh/
+.aws/
+.aliyun/
+.kube/
+.codex/
+.agentcore/
+.secrets/
+.npmrc
+.pypirc
+.netrc
+auth.json
+*.pem
+*.key
+*.p12
+*.pfx
+/agent.yaml
+/credentials.json
+/token
+
+# Local build, push and request logs
+*.log
+
+# Session state and generated authentication must never enter build context
+**/.agentcore-codex
+**/.sandbox-test-home-*
+**/.agentcore-tmp
+**/auth.json
+**/.env
+**/.env.*
+!**/.env.example
+**/uploads
+**/.generated-images
+**/id_rsa
+**/id_ed25519
+*.pcapng

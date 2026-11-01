@@ -1,0 +1,5 @@
+{
+  "conversationId": "demo-agentcore",
+  "events": [{ "type": "user.message", "content": "请使用已配置的 Skill 和合适的 MCP 工具完成任务，再总结结果。" }],
+  "agent": { "cli": "codex", "maxTurns": 10, "timeoutMs": 300000 }
+}

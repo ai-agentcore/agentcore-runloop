@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1740" viewBox="0 0 1600 1740" role="img" aria-labelledby="title desc">
+  <title id="title">AgentCore Runloop 用户请求与三种执行模式流程</title>
+  <desc id="desc">从用户请求入口开始，展示公共校验、资源准备、local、sandbox、tools-only 三种执行模式分流、Agent 推理、工具路由、产物发布、事件返回和清理流程。</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.08"/></filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L8 3L0 6Z" fill="#475569"/></marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L8 3L0 6Z" fill="#2563eb"/></marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L8 3L0 6Z" fill="#059669"/></marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L8 3L0 6Z" fill="#7c3aed"/></marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L8 3L0 6Z" fill="#d97706"/></marker>
+    <style>
+      text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+      .h1{font-size:30px;font-weight:700;fill:#0f172a}.sub{font-size:14px;fill:#64748b}
+      .section{font-size:16px;font-weight:700;fill:#0f172a}.title{font-size:14px;font-weight:700;fill:#0f172a}
+      .body{font-size:12px;fill:#334155}.small{font-size:11px;fill:#64748b}.white{fill:#fff}.white2{fill:#e2e8f0}
+      .panel{fill:#fff;stroke:#cbd5e1;stroke-width:1.2}.node{fill:#fff;stroke:#cbd5e1;stroke-width:1.2}
+      .line{fill:none;stroke:#475569;stroke-width:1.8;marker-end:url(#arrow)}
+      .blue{stroke:#2563eb;marker-end:url(#arrowBlue)}.green{stroke:#059669;marker-end:url(#arrowGreen)}
+      .purple{stroke:#7c3aed;marker-end:url(#arrowPurple)}.orange{stroke:#d97706;marker-end:url(#arrowOrange)}
+      .dash{stroke-dasharray:6 5}.divider{stroke:#e2e8f0;stroke-width:1}
+    </style>
+  </defs>
+
+  <rect width="1600" height="1740" fill="#f8fafc"/>
+  <text x="48" y="52" class="h1">AgentCore Runloop · 用户请求到任务完成</text>
+  <text x="48" y="80" class="sub">公共请求入口 → 资源准备 → local / sandbox / tools-only 分流 → Agent 推理与工具执行 → 流式返回与清理</text>
+
+  <!-- Common request intake -->
+  <rect x="500" y="112" width="600" height="72" rx="14" fill="#dbeafe" stroke="#60a5fa" filter="url(#shadow)"/>
+  <circle cx="540" cy="148" r="20" fill="#2563eb"/><text x="540" y="153" text-anchor="middle" font-size="14" font-weight="700" class="white">1</text>
+  <text x="575" y="141" class="title">用户请求进入统一入口</text>
+  <text x="575" y="162" class="body">POST /v1/run · /ag-ui/agent · /invocations</text>
+
+  <path d="M800 184V216" class="line blue"/>
+  <rect x="500" y="216" width="600" height="88" rx="14" class="node"/>
+  <circle cx="540" cy="260" r="20" fill="#2563eb"/><text x="540" y="265" text-anchor="middle" font-size="14" font-weight="700" class="white">2</text>
+  <text x="575" y="246" class="title">请求边界校验</text>
+  <text x="575" y="267" class="body">API 鉴权 · Body/AG-UI Schema · UID/ConversationId/RunId 安全格式</text>
+  <text x="575" y="287" class="small">同一 Conversation 已运行 → 409；非法请求 → 400；身份由接入方完成业务真实性校验</text>
+
+  <path d="M800 304V336" class="line blue"/>
+  <rect x="500" y="336" width="600" height="88" rx="14" class="node"/>
+  <circle cx="540" cy="380" r="20" fill="#2563eb"/><text x="540" y="385" text-anchor="middle" font-size="14" font-weight="700" class="white">3</text>
+  <text x="575" y="366" class="title">懒加载并缓存运行资源</text>
+  <text x="575" y="387" class="body">AgentCore.auto() → Model · MCP Manifest · Skill Manifest</text>
+  <text x="575" y="407" class="small">可选 MCP/Skill 失败降级为 warning；模型或请求准备失败返回安全 diagnostics</text>
+
+  <path d="M800 424V456" class="line blue"/>
+  <polygon points="800,456 925,510 800,564 675,510" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="800" y="505" text-anchor="middle" class="title">4. AGENTCORE_EXECUTION</text>
+  <text x="800" y="525" text-anchor="middle" class="small">选择任务执行方式</text>
+
+  <!-- Mode panels -->
+  <path d="M675 510H280V588" class="line green"/><text x="430" y="496" class="body">local（默认）</text>
+  <path d="M800 564V588" class="line purple"/><text x="814" y="582" class="body">sandbox</text>
+  <path d="M925 510H1320V588" class="line orange"/><text x="1084" y="496" class="body">tools-only</text>
+
+  <rect x="48" y="588" width="464" height="456" rx="18" fill="#ecfdf5" stroke="#34d399" filter="url(#shadow)"/>
+  <rect x="568" y="588" width="464" height="456" rx="18" fill="#f5f3ff" stroke="#a78bfa" filter="url(#shadow)"/>
+  <rect x="1088" y="588" width="464" height="456" rx="18" fill="#fff7ed" stroke="#fb923c" filter="url(#shadow)"/>
+
+  <circle cx="82" cy="624" r="18" fill="#059669"/><text x="82" y="629" text-anchor="middle" font-size="13" font-weight="700" class="white">L</text>
+  <text x="112" y="621" class="section">Local 模式</text><text x="112" y="642" class="small">文件与命令在 Agent 容器执行</text>
+  <rect x="76" y="674" width="408" height="72" rx="10" class="node"/>
+  <text x="96" y="699" class="title">L1 · 准备会话工作目录</text>
+  <text x="96" y="721" class="body">WORKDIR / UID / ConversationId</text>
+  <text x="96" y="738" class="small">路径安全校验；每用户、每会话隔离</text>
+  <path d="M280 746V766" class="line green"/>
+  <rect x="76" y="766" width="408" height="82" rx="10" class="node"/>
+  <text x="96" y="791" class="title">L2 · 准备 Skill 与附件</text>
+  <text x="96" y="813" class="body">SDK Skill 根 → .agents/skills 安全目录投影</text>
+  <text x="96" y="832" class="small">已确认附件写入当前业务 cwd/uploads/</text>
+  <path d="M280 848V868" class="line green"/>
+  <rect x="76" y="868" width="408" height="90" rx="10" class="node"/>
+  <text x="96" y="893" class="title">L3 · 本地执行后端</text>
+  <text x="96" y="915" class="body">Runloop MCP：bash · read/write · grep · glob</text>
+  <text x="96" y="936" class="small">Codex 内建 Shell 关闭；所有操作限定在会话 cwd</text>
+  <text x="280" y="1008" text-anchor="middle" class="body">可调用 publish_artifact → OSS 交付根</text>
+
+  <circle cx="602" cy="624" r="18" fill="#7c3aed"/><text x="602" y="629" text-anchor="middle" font-size="13" font-weight="700" class="white">S</text>
+  <text x="632" y="621" class="section">Sandbox 模式</text><text x="632" y="642" class="small">一会话一沙箱，按需创建</text>
+  <rect x="596" y="674" width="408" height="66" rx="10" class="node"/>
+  <text x="616" y="699" class="title">S1 · 只注入 LazySandboxExecution</text>
+  <text x="616" y="721" class="small">纯文本请求不取 Key、不创建沙箱</text>
+  <path d="M800 740V758" class="line purple"/>
+  <rect x="596" y="758" width="408" height="98" rx="10" class="node"/>
+  <text x="616" y="783" class="title">S2 · 首次沙箱能力触发 acquire</text>
+  <text x="616" y="805" class="body">附件 · 文件 · Shell · Skill 读取 · 发布</text>
+  <text x="616" y="826" class="small">先复用健康绑定；否则环境 Key → 凭证回退 → create</text>
+  <text x="616" y="843" class="small">配置 Volume 时先用运行时 STS 解析 Role 与网络 metadata</text>
+  <path d="M800 856V874" class="line purple"/>
+  <rect x="596" y="874" width="408" height="90" rx="10" class="node"/>
+  <text x="616" y="899" class="title">S3 · 准备远端执行根</text>
+  <text x="616" y="921" class="body">Skill Bundle 分片批量导入，成功后写 ready marker</text>
+  <text x="616" y="942" class="small">文件 API 与 commands.run 均限定在 SANDBOX_ROOT</text>
+  <text x="800" y="994" text-anchor="middle" class="body">首次 SDK 超时可切换 WORKDIR 本地回退</text>
+  <text x="800" y="1015" text-anchor="middle" class="small">请求结束释放租约，但保留绑定供同会话复用</text>
+
+  <circle cx="1122" cy="624" r="18" fill="#d97706"/><text x="1122" y="629" text-anchor="middle" font-size="13" font-weight="700" class="white">T</text>
+  <text x="1152" y="621" class="section">Tools-only 模式</text><text x="1152" y="642" class="small">只允许 Codex，不开放本地执行面</text>
+  <rect x="1116" y="674" width="408" height="72" rx="10" class="node"/>
+  <text x="1136" y="699" class="title">T1 · 固定系统实例策略</text>
+  <text x="1136" y="721" class="body">无 WORKDIR · 无 Artifact Root · 无 Sandbox</text>
+  <text x="1136" y="738" class="small">关闭 Codex 内建 Shell，不注入本地执行工具</text>
+  <path d="M1320 746V766" class="line orange"/>
+  <rect x="1116" y="766" width="408" height="82" rx="10" class="node"/>
+  <text x="1136" y="791" class="title">T2 · Skill 工具化访问</text>
+  <text x="1136" y="813" class="body">load_skills · read_skill_file</text>
+  <text x="1136" y="832" class="small">不向 Codex 暴露 Agent 容器 Skill 路径</text>
+  <path d="M1320 848V868" class="line orange"/>
+  <rect x="1116" y="868" width="408" height="90" rx="10" class="node"/>
+  <text x="1136" y="893" class="title">T3 · 仅使用托管能力</text>
+  <text x="1136" y="915" class="body">Model + AgentCore MCP</text>
+  <text x="1136" y="936" class="small">文件/Shell 只有在外部 MCP 显式提供时才可用</text>
+  <text x="1320" y="1008" text-anchor="middle" class="body">框架不提供 publish_artifact</text>
+
+  <!-- Converged run -->
+  <path d="M280 1044V1080H720" class="line green"/>
+  <path d="M800 1044V1080" class="line purple"/>
+  <path d="M1320 1044V1080H880" class="line orange"/>
+  <rect x="560" y="1080" width="480" height="82" rx="14" fill="#dbeafe" stroke="#60a5fa" filter="url(#shadow)"/>
+  <circle cx="598" cy="1121" r="20" fill="#2563eb"/><text x="598" y="1126" text-anchor="middle" font-size="14" font-weight="700" class="white">5</text>
+  <text x="633" y="1108" class="title">组装 RunRequest 并启动 LoopRunner</text>
+  <text x="633" y="1130" class="body">系统提示词 · Model Proxy · MCP 清单 · 固定身份头 · 执行后端</text>
+  <text x="633" y="1148" class="small">同一 Node.js 进程启动 Codex；内部接口统一使用随机 Token</text>
+
+  <path d="M800 1162V1194" class="line blue"/>
+  <rect x="202" y="1194" width="1196" height="160" rx="16" class="panel" filter="url(#shadow)"/>
+  <circle cx="240" cy="1234" r="20" fill="#2563eb"/><text x="240" y="1239" text-anchor="middle" font-size="14" font-weight="700" class="white">6</text>
+  <text x="275" y="1228" class="section">Agent 推理与工具循环</text>
+  <text x="275" y="1250" class="small">模型持续决定：直接回复、调用业务 MCP、读取 Skill、执行文件/Shell、发布最终文件</text>
+  <rect x="238" y="1270" width="240" height="58" rx="9" fill="#eff6ff" stroke="#60a5fa"/>
+  <text x="358" y="1294" text-anchor="middle" class="title">/model/v1</text><text x="358" y="1314" text-anchor="middle" class="small">AgentCore Model</text>
+  <rect x="524" y="1270" width="240" height="58" rx="9" fill="#eef2ff" stroke="#818cf8"/>
+  <text x="644" y="1294" text-anchor="middle" class="title">/mcp</text><text x="644" y="1314" text-anchor="middle" class="small">AgentCore 托管 MCP</text>
+  <rect x="810" y="1270" width="240" height="58" rx="9" fill="#ecfdf5" stroke="#34d399"/>
+  <text x="930" y="1294" text-anchor="middle" class="title">执行后端</text><text x="930" y="1314" text-anchor="middle" class="small">Local / Sandbox / 外部 MCP</text>
+  <rect x="1096" y="1270" width="266" height="58" rx="9" fill="#fff7ed" stroke="#fb923c"/>
+  <text x="1229" y="1294" text-anchor="middle" class="title">publish_artifact</text><text x="1229" y="1314" text-anchor="middle" class="small">仅 local / sandbox</text>
+  <path d="M478 1299H524" class="line"/><path d="M764 1299H810" class="line"/><path d="M1050 1299H1096" class="line"/>
+
+  <!-- Artifact and response -->
+  <path d="M800 1354V1386" class="line blue"/>
+  <rect x="202" y="1386" width="1196" height="106" rx="16" class="panel"/>
+  <text x="230" y="1416" class="section">最终文件交付（可选）</text>
+  <text x="230" y="1442" class="body">Local：从会话 cwd 读取　　Sandbox：从远端 SANDBOX_ROOT 读取　　Tools-only：不可用</text>
+  <path d="M230 1464H1370" class="divider"/>
+  <text x="230" y="1482" class="small">统一校验路径、文件类型、符号链接和覆盖 → 写入 ARTIFACT_ROOT/UID/ConversationId → 只返回 /f/file-id</text>
+
+  <path d="M800 1492V1524" class="line blue"/>
+  <rect x="500" y="1524" width="600" height="76" rx="14" fill="#dbeafe" stroke="#60a5fa"/>
+  <circle cx="540" cy="1562" r="20" fill="#2563eb"/><text x="540" y="1567" text-anchor="middle" font-size="14" font-weight="700" class="white">7</text>
+  <text x="575" y="1552" class="title">事件转换并流式返回</text>
+  <text x="575" y="1574" class="body">Runloop Events → SSE / AG-UI；心跳、模型增量、工具生命周期、最终结果</text>
+
+  <path d="M800 1600V1632" class="line blue"/>
+  <rect x="500" y="1632" width="600" height="72" rx="14" class="node"/>
+  <circle cx="540" cy="1668" r="20" fill="#2563eb"/><text x="540" y="1673" text-anchor="middle" font-size="14" font-weight="700" class="white">8</text>
+  <text x="575" y="1659" class="title">请求清理</text>
+  <text x="575" y="1681" class="body">中断残余命令 · 解绑执行后端 · 释放租约和并发锁；Sandbox 会话绑定继续保留</text>
+
+  <text x="48" y="1722" class="sub">阅读方式：步骤 1–4 是公共入口与模式选择；三列是模式专属准备；步骤 5–8 再次汇合为统一的 Agent 执行、交付与返回链路。</text>
+</svg>

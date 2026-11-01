@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1040" viewBox="0 0 1440 1040" role="img" aria-labelledby="title desc">
+  <title id="title">AgentCore Runloop Sandbox 模式总览</title>
+  <desc id="desc">展示请求进入 Harness 后，三种执行模式的分流，Sandbox 的惰性创建与会话复用，文件、命令、附件、Skill 和产物发布路径，以及安全边界、超时回退与当前限制。</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.09"/>
+    </filter>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0 0L8 3L0 6Z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0 0L8 3L0 6Z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0 0L8 3L0 6Z" fill="#d97706"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+      .h1 { font-size: 34px; font-weight: 760; fill: #0f172a; }
+      .subtitle { font-size: 15px; fill: #64748b; }
+      .section { font-size: 18px; font-weight: 720; fill: #0f172a; }
+      .title { font-size: 15px; font-weight: 700; fill: #0f172a; }
+      .body { font-size: 13px; fill: #334155; }
+      .small { font-size: 12px; fill: #64748b; }
+      .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 12px; fill: #334155; }
+      .white { fill: #ffffff; }
+      .card { fill: #ffffff; stroke: #e2e8f0; stroke-width: 1.2; }
+      .blueLine { fill: none; stroke: #2563eb; stroke-width: 2; marker-end: url(#arrowBlue); }
+      .purpleLine { fill: none; stroke: #7c3aed; stroke-width: 2; marker-end: url(#arrowPurple); }
+      .orangeLine { fill: none; stroke: #d97706; stroke-width: 2; marker-end: url(#arrowOrange); }
+      .dash { stroke-dasharray: 7 6; }
+    </style>
+  </defs>
+
+  <rect width="1440" height="1040" fill="#f8fafc"/>
+  <rect x="0" y="0" width="1440" height="8" fill="#2563eb"/>
+  <text x="56" y="60" class="h1">AgentCore Runloop · Sandbox 模式如何工作</text>
+  <text x="56" y="90" class="subtitle">隔离文件与命令执行面；Codex、模型代理、MCP 聚合与业务编排继续运行在 Harness 中</text>
+
+  <!-- Request and execution-mode routing -->
+  <rect x="56" y="128" width="1328" height="206" rx="20" class="card" filter="url(#shadow)"/>
+  <text x="84" y="164" class="section">1 · 请求入口与执行模式</text>
+
+  <rect x="84" y="190" width="232" height="96" rx="14" fill="#dbeafe" stroke="#60a5fa"/>
+  <circle cx="116" cy="220" r="17" fill="#2563eb"/>
+  <text x="116" y="225" text-anchor="middle" class="white" font-size="13" font-weight="700">IN</text>
+  <text x="146" y="218" class="title">用户请求</text>
+  <text x="104" y="249" class="body">/v1/run · AG-UI</text>
+  <text x="104" y="269" class="small">uid + conversationId</text>
+
+  <path d="M316 238H374" class="blueLine"/>
+  <rect x="374" y="190" width="282" height="96" rx="14" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="398" y="218" class="title">Harness 公共处理</text>
+  <text x="398" y="243" class="body">鉴权 · Schema · 资源清单</text>
+  <text x="398" y="265" class="small">启动 readiness 不依赖创建沙箱</text>
+
+  <path d="M656 238H714" class="blueLine"/>
+  <polygon points="794,190 874,238 794,286 714,238" fill="#eef2ff" stroke="#818cf8" stroke-width="1.4"/>
+  <text x="794" y="233" text-anchor="middle" class="title">EXECUTION</text>
+  <text x="794" y="253" text-anchor="middle" class="small">默认 local</text>
+
+  <path d="M874 214H942" class="blueLine"/>
+  <rect x="942" y="180" width="122" height="68" rx="12" fill="#ecfdf5" stroke="#6ee7b7"/>
+  <text x="1003" y="207" text-anchor="middle" class="title">local</text>
+  <text x="1003" y="229" text-anchor="middle" class="small">容器执行</text>
+
+  <path d="M874 238H1092" class="purpleLine"/>
+  <rect x="1092" y="204" width="122" height="68" rx="12" fill="#f5f3ff" stroke="#a78bfa"/>
+  <text x="1153" y="231" text-anchor="middle" class="title">sandbox</text>
+  <text x="1153" y="253" text-anchor="middle" class="small">远程隔离执行</text>
+
+  <path d="M874 262H1242" class="orangeLine"/>
+  <rect x="1242" y="228" width="116" height="68" rx="12" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="1300" y="255" text-anchor="middle" class="title">tools-only</text>
+  <text x="1300" y="277" text-anchor="middle" class="small">只调用 MCP</text>
+
+  <!-- Lazy lifecycle -->
+  <rect x="56" y="366" width="826" height="388" rx="20" class="card" filter="url(#shadow)"/>
+  <text x="84" y="404" class="section">2 · Sandbox 惰性生命周期</text>
+  <text x="84" y="429" class="small">绑定键：uid + conversationId；同一会话复用一个健康沙箱</text>
+
+  <rect x="84" y="464" width="184" height="78" rx="13" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="104" y="493" class="title">请求开始</text>
+  <text x="104" y="518" class="body">只注入惰性后端</text>
+
+  <path d="M268 503H318" class="purpleLine"/>
+  <polygon points="398,459 478,503 398,547 318,503" fill="#faf5ff" stroke="#c084fc"/>
+  <text x="398" y="496" text-anchor="middle" class="title">需要执行面？</text>
+  <text x="398" y="517" text-anchor="middle" class="small">文件 / Shell / 附件</text>
+
+  <path d="M398 547V598" class="blueLine dash"/>
+  <rect x="306" y="598" width="184" height="72" rx="13" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="398" y="626" text-anchor="middle" class="title">否：纯文本旁路</text>
+  <text x="398" y="649" text-anchor="middle" class="small">不取 Key、不创建 Sandbox</text>
+
+  <path d="M478 503H528" class="purpleLine"/>
+  <rect x="528" y="464" width="144" height="78" rx="13" fill="#f5f3ff" stroke="#a78bfa"/>
+  <text x="600" y="493" text-anchor="middle" class="title">获取租约</text>
+  <text x="600" y="518" text-anchor="middle" class="small">同会话互斥</text>
+
+  <path d="M672 503H722" class="purpleLine"/>
+  <rect x="722" y="464" width="132" height="78" rx="13" fill="#ede9fe" stroke="#8b5cf6"/>
+  <text x="788" y="493" text-anchor="middle" class="title">创建 / 复用</text>
+  <text x="788" y="518" text-anchor="middle" class="small">健康检查 · 续期</text>
+
+  <path d="M788 542V584" class="purpleLine"/>
+  <rect x="528" y="584" width="326" height="138" rx="15" fill="#1e1b4b" stroke="#7c3aed"/>
+  <text x="552" y="615" class="white" font-size="15" font-weight="700">会话 Sandbox</text>
+  <text x="552" y="642" class="white" font-size="13">cwd = AGENTCORE_SANDBOX_ROOT</text>
+  <text x="552" y="668" fill="#ddd6fe" font-size="12">Shell · read/write/edit · grep · glob</text>
+  <text x="552" y="692" fill="#ddd6fe" font-size="12">uploads/ · .agents/skills/ · 任务中间文件</text>
+  <rect x="738" y="606" width="92" height="26" rx="13" fill="#7c3aed"/>
+  <text x="784" y="624" text-anchor="middle" class="white" font-size="11" font-weight="700">公网默认关闭</text>
+
+  <!-- Data path -->
+  <rect x="914" y="366" width="470" height="388" rx="20" class="card" filter="url(#shadow)"/>
+  <text x="942" y="404" class="section">3 · 数据进出路径</text>
+
+  <rect x="942" y="446" width="182" height="86" rx="13" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="963" y="475" class="title">可信输入</text>
+  <text x="963" y="500" class="body">已确认附件 · Skill Bundle</text>
+  <text x="963" y="520" class="small">票据 / ETag / 路径边界校验</text>
+
+  <path d="M1124 489H1168" class="purpleLine"/>
+  <rect x="1168" y="446" width="188" height="86" rx="13" fill="#f5f3ff" stroke="#a78bfa"/>
+  <text x="1189" y="475" class="title">Sandbox 工作根</text>
+  <text x="1189" y="500" class="mono">uploads/</text>
+  <text x="1189" y="520" class="mono">.agents/skills/</text>
+
+  <path d="M1262 532V574" class="purpleLine"/>
+  <rect x="1168" y="574" width="188" height="82" rx="13" fill="#ecfdf5" stroke="#6ee7b7"/>
+  <text x="1189" y="604" class="title">publish_artifact</text>
+  <text x="1189" y="628" class="body">读取常规文件字节</text>
+  <text x="1189" y="648" class="small">拒绝符号链接与覆盖</text>
+
+  <path d="M1168 615H1124" class="blueLine"/>
+  <rect x="942" y="574" width="182" height="82" rx="13" fill="#f0fdf4" stroke="#86efac"/>
+  <text x="963" y="604" class="title">OSS 交付根</text>
+  <text x="963" y="628" class="mono">uid/conversationId</text>
+  <text x="963" y="648" class="small">模型仅看到 /f/&lt;file-id&gt;</text>
+
+  <rect x="942" y="686" width="414" height="42" rx="10" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="1149" y="712" text-anchor="middle" class="body">API Key、票据、OSS/FUSE 绝对路径不进入模型或日志</text>
+
+  <!-- Safety, fallback and limitations -->
+  <rect x="56" y="786" width="1328" height="206" rx="20" class="card" filter="url(#shadow)"/>
+  <text x="84" y="824" class="section">4 · 安全边界、超时回退与当前限制</text>
+
+  <rect x="84" y="852" width="382" height="108" rx="14" fill="#ecfeff" stroke="#67e8f9"/>
+  <text x="108" y="882" class="title">路径与并发边界</text>
+  <text x="108" y="907" class="body">路径不可逃出 Sandbox Root；目录与发布文件拒绝符号链接</text>
+  <text x="108" y="932" class="body">同一会话并发返回 409；不同会话可以并行</text>
+
+  <rect x="492" y="852" width="422" height="108" rx="14" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="516" y="882" class="title">只在 SDK 超时时本地回退</text>
+  <text x="516" y="907" class="body">需显式配置 AGENTCORE_WORKDIR</text>
+  <text x="516" y="932" class="body">凭证、配置、配额、模板、Volume 错误不会静默降级</text>
+
+  <rect x="940" y="852" width="416" height="108" rx="14" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="964" y="882" class="title">生产限制</text>
+  <text x="964" y="907" class="body">绑定与互斥状态当前只在单进程内存中</text>
+  <text x="964" y="932" class="body">多副本需粘性路由或 CAS/TTL 共享存储；图片工具尚未打通</text>
+
+  <text x="56" y="1020" class="small">默认模式：local　·　Sandbox 默认公网：关闭　·　Sandbox 默认 TTL：6 小时　·　单命令默认超时：1 小时</text>
+</svg>

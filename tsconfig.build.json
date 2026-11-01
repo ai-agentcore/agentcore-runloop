@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*.ts", "vendor/runloop/src/**/*.ts"],
+  "compilerOptions": { "sourceMap": true, "declaration": true }
+}

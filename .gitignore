@@ -1,0 +1,54 @@
+node_modules/
+dist/
+.venv/
+workspaces/
+.agentcore-skills/
+logs/
+coverage/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Environment files: keep only the documented template
+.env
+.env.*
+!.env.example
+
+# Credentials and local runtime state
+.ssh/
+.aws/
+.aliyun/
+.kube/
+.codex/
+.agentcore/
+.secrets/
+.npmrc
+.pypirc
+.netrc
+auth.json
+*.pem
+*.key
+*.p12
+*.pfx
+/agent.yaml
+/credentials.json
+/token
+
+# Local build, push and request logs
+*.log
+capture.pcap
+*.pcap
+*.pcapng
+
+# Local verification records are not part of the clean source distribution
+/verification/
+/VERIFICATION.md
+
+# Ephemeral Codex sandbox config (may contain internal authentication)
+.agentcore-codex/
+.sandbox-test-home-*/
+.agentcore-tmp/
+uploads/
+.generated-images/
+id_rsa
+id_ed25519

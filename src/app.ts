@@ -375,8 +375,8 @@ export function createApp(config: Config, options: AppOptions = {}) {
     }
 
     const cli = input.agent?.cli ?? config.agentCli;
-    if ((config.execution === "tools-only" || config.execution === "local") && cli !== "codex") {
-      return failure(context, agui, "INVALID_ENGINE", "local and tools-only modes require codex", 400);
+    if (cli !== "codex") {
+      return failure(context, agui, "INVALID_ENGINE", "Only codex is supported", 400);
     }
     try {
       runner.resolveCliCommand(cli);

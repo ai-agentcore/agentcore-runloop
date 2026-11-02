@@ -74,31 +74,7 @@ describe("callOpenapiTool", () => {
     expect(init.body).toBeUndefined();
   });
 
-  it("auth.mode=agentrun: 走 RAM 签名（Agentrun-Authorization + host 改写 -ram）", async () => {
-    const spy = mockFetch(() => new Response("signed-ok", { status: 200 }));
-    const out = await callOpenapiTool(
-      resource({ auth: { mode: "agentrun" } }),
-      op({ serverUrl: "https://1234567890123456.agentrun-data.cn-hangzhou.aliyuncs.com", path: "/tools/getWeather" }),
-      { city: "hz" },
-      CREDS,
-    );
-    expect(out).toBe("signed-ok");
-    const [url, init] = spy.mock.calls[0];
-    expect(url).toContain("-ram.agentrun-data");
-    expect((init.headers as Record<string, string>)["Agentrun-Authorization"]).toMatch(/^AGENTRUN4-HMAC-SHA256 /);
-  });
 
-  it("auth.mode=agentrun 缺 credentials → error", async () => {
-    const spy = mockFetch(() => new Response("x"));
-    // 用 aliyun 白名单 host 通过 SSRF 校验（R1：SSRF 先于 creds 检查），才走到「缺 credentials」分支
-    const out = await callOpenapiTool(
-      resource({ auth: { mode: "agentrun" } }),
-      op({ serverUrl: "https://acct.agentrun-data.cn-hangzhou.aliyuncs.com" }),
-      {}, undefined,
-    );
-    expect(JSON.parse(out).error).toMatch(/requires credentials/);
-    expect(spy).not.toHaveBeenCalled();
-  });
 
   it("HTTP 非 2xx → 只回状态码，不回灌上游 body（H1）", async () => {
     mockFetch(() => new Response("boom", { status: 500 }));
@@ -117,23 +93,6 @@ describe("callOpenapiTool", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("SSRF：mode=agentrun 指向元数据/私网/环回 → 拦截，不发请求（R1）", async () => {
-    for (const bad of [
-      "http://169.254.169.254/latest/meta-data",   // 云元数据
-      "http://127.0.0.1:8080",                       // 环回
-      "http://10.0.0.5/internal",                    // RFC1918
-      "https://evil.example.com/agentrun",           // 任意外部域名（非 aliyun）
-    ]) {
-      const spy = mockFetch(() => new Response("should-not-reach", { status: 200 }));
-      const out = JSON.parse(await callOpenapiTool(
-        resource({ auth: { mode: "agentrun" } }),
-        op({ serverUrl: bad, path: "" }),
-        {}, CREDS,
-      ));
-      expect(out.error, bad).toContain("blocked outbound target");
-      expect(spy, bad).not.toHaveBeenCalled();
-    }
-  });
 
   it("fetch 抛错 → error 字符串", async () => {
     mockFetch(() => { throw new Error("ECONNREFUSED"); });

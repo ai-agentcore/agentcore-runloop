@@ -1,15 +1,15 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { AgentrunMcpServer } from "@/mcp/server.js";
+import { RunloopMcpServer } from "@/mcp/server.js";
 import type { NonMcpResources } from "@/mcp/types.js";
 import type { Resource } from "@/types/resources.js";
 
 /**
- * 确认 runloop 对 `protocol:mcp` 资源（下游 MCP，由进程内 agentrun-mcp 聚合器代理）的两件事：
+ * 确认 runloop 对 `protocol:mcp` 资源（下游 MCP，由进程内 runloop-mcp 聚合器代理）的两件事：
  *   1. 识别 tools —— 聚合器 tools/list 是否暴露下游 MCP 的工具。
  *   2. 正确调用 —— 聚合器 tools/call 是否透传到下游 MCP 并取回结果。
  *
- * mock 手法：AgentrunMcpServer 本身就是个标准 MCP server，故用它当「下游 MCP」（暴露一个 openapi calc 工具），
- * 再用另一个 AgentrunMcpServer 当「聚合器」，其 resources.mcpServers 指向下游。全程进程内 HTTP，不需 codex/模型/AR token。
+ * mock 手法：RunloopMcpServer 本身就是个标准 MCP server，故用它当「下游 MCP」（暴露一个 openapi calc 工具），
+ * 再用另一个 RunloopMcpServer 当「聚合器」，其 resources.mcpServers 指向下游。全程进程内 HTTP，不需 codex/模型/AR token。
  */
 
 /** 下游 MCP server 暴露的工具：openapi calc（被调用时做一次 openapi HTTP，测试里 stub 掉）。下游暴露名 = `function__calc__calc`。 */
@@ -53,20 +53,20 @@ function stubUpstream(body: unknown) {
   vi.stubGlobal("fetch", spy as unknown as typeof fetch);
 }
 
-async function listToolNames(agg: AgentrunMcpServer): Promise<string[]> {
+async function listToolNames(agg: RunloopMcpServer): Promise<string[]> {
   const r = await agg.handleJsonRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" });
   return ((r.result as { tools?: Array<{ name: string }> })?.tools ?? []).map((t) => t.name);
 }
 
-async function callTool(agg: AgentrunMcpServer, name: string, args: Record<string, unknown>) {
+async function callTool(agg: RunloopMcpServer, name: string, args: Record<string, unknown>) {
   const r = await agg.handleJsonRpc({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: args } });
   return r.result as { content: Array<{ text: string }>; isError?: boolean };
 }
 
 describe("MCP 聚合：下游 MCP 工具的识别与调用", () => {
-  const servers: AgentrunMcpServer[] = [];
+  const servers: RunloopMcpServer[] = [];
   const spawn = async (resources: NonMcpResources) => {
-    const s = new AgentrunMcpServer({ resources });
+    const s = new RunloopMcpServer({ resources });
     await s.start();
     servers.push(s);
     return s;

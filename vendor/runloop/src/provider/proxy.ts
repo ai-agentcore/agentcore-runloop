@@ -11,14 +11,6 @@ import {
   responsesCompletedEvent,
   responsesErrorEvent,
 } from "./translate-responses.js";
-import {
-  messagesRequestToChatCompletions,
-  createClaudeState,
-  claudeMessageStart,
-  chatCompletionChunkToClaudeEvents,
-  claudeFinalize,
-  claudeErrorEvent,
-} from "./translate-messages.js";
 import { RouterPolicy } from "./router.js";
 import { Logger, type LoggerOptions } from "../util/logger.js";
 import { nanoid } from "nanoid";
@@ -222,9 +214,6 @@ export class ModelProviderProxy {
       return this.handleResponses(body, res);
     }
 
-    if (url.endsWith("/messages")) {
-      return this.handleClaudeMessages(body, res);
-    }
 
     const pathname = url.split("?")[0];
     if (pathname.endsWith("/models") || pathname.match(/\/models\//)) {
@@ -325,50 +314,6 @@ export class ModelProviderProxy {
       this.logStreamEnd(startTime);
     } catch (err) {
       res.write(responsesErrorEvent(err instanceof Error ? err.message : String(err)));
-    }
-
-    res.end();
-  }
-
-  private async handleClaudeMessages(
-    body: string,
-    res: import("node:http").ServerResponse
-  ): Promise<void> {
-    const parsed = JSON.parse(body);
-    const ccRequest = messagesRequestToChatCompletions(parsed);
-    const cfg = this.router.resolve(ccRequest.model);
-
-    this.logRequest("POST /v1/messages", parsed);
-    this.logUpstreamRequest(ccRequest);
-
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    });
-
-    const state = createClaudeState(`msg_${nanoid()}`, cfg.model);
-    res.write(claudeMessageStart(state));
-
-    const startTime = Date.now();
-    try {
-      for await (const chunkStr of this.upstream(ccRequest.model, ccRequest)) {
-        this.logUpstreamChunk(chunkStr, startTime);
-        let chunk: ChatCompletionChunk;
-        try {
-          chunk = JSON.parse(chunkStr);
-        } catch {
-          continue;
-        }
-        if (!isPrewarmRequest(parsed)) this.emitChunkTextDelta(chunk);
-        for (const event of chatCompletionChunkToClaudeEvents(chunk, state)) {
-          res.write(event);
-        }
-      }
-      for (const event of claudeFinalize(state)) res.write(event);
-      this.logStreamEnd(startTime);
-    } catch (err) {
-      res.write(claudeErrorEvent(err instanceof Error ? err.message : String(err)));
     }
 
     res.end();

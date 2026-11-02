@@ -1,7 +1,4 @@
-/**
- * CLI 预热规格（数据驱动，runner.initialize 通用执行，不再硬编码 codex flags）。
- * 新增 CLI 只在此声明自己的预热方式（或不声明 = 不预热），runner 零改动。
- */
+/** Codex subprocess warmup configuration. */
 export interface PrewarmSpec {
   /** 预热命令的参数（如 codex 的 `exec --json ... -m prewarm "echo hi"`）。 */
   args: string[];
@@ -15,15 +12,12 @@ export interface PrewarmSpec {
 
 export interface AgentCliEntry {
   command: string;
-  defaultArgs?: string[];
-  adapterType?: "cli" | "stream-json" | "acp" | "acp-server" | "codex";
+  adapterType?: "codex";
   /** 预热规格（可选）；缺省则该 CLI 不预热。 */
   prewarm?: PrewarmSpec;
 }
 
 const DEFAULT_REGISTRY: Record<string, AgentCliEntry> = {
-  qodercli: { command: "qodercli", adapterType: "acp-server", defaultArgs: ["--acp"] },
-  "codex-acp": { command: "codex-acp", adapterType: "acp-server" },
   codex: {
     command: "codex",
     adapterType: "codex",
@@ -37,7 +31,6 @@ const DEFAULT_REGISTRY: Record<string, AgentCliEntry> = {
       env: { OPENAI_API_KEY: "prewarm" },
     },
   },
-  "claude-code": { command: "claude", adapterType: "cli" },
 };
 
 export class AgentCliRegistry {
@@ -47,7 +40,7 @@ export class AgentCliRegistry {
     this.entries = new Map(Object.entries(DEFAULT_REGISTRY));
     if (additionalEntries) {
       for (const [name, entry] of Object.entries(additionalEntries)) {
-        this.entries.set(name, entry);
+        this.register(name, entry);
       }
     }
   }
@@ -65,16 +58,13 @@ export class AgentCliRegistry {
   }
 
   register(name: string, entry: AgentCliEntry): void {
+    if (name !== "codex" || (entry.adapterType && entry.adapterType !== "codex")) {
+      throw new Error("Only codex is supported");
+    }
     this.entries.set(name, entry);
   }
 }
 
 export function validateAgentCli(name: string): boolean {
-  if (name.startsWith("/") || name.startsWith("./") || name.startsWith("..")) {
-    return false;
-  }
-  if (name.includes(" ") || name.includes(";") || name.includes("|") || name.includes("&")) {
-    return false;
-  }
-  return true;
+  return name === "codex";
 }

@@ -24,10 +24,12 @@ RUN git --version \
     && python3 --version \
     && node --version \
     && codex --version
-RUN mkdir -p /workspace && chown coder:coder /workspace
-USER coder
-ENV AGENTCORE_HOST=0.0.0.0 \
-    AGENTCORE_PORT=8080 \
+ENV HOST=0.0.0.0 \
+    PORT=8080 \
+    AGENTCORE_EXECUTION=local \
+    AGENTCORE_MODEL_ENABLE_THINKING=false \
+    AGENTCORE_SKILL_WORKSPACE_DIR=/mnt/agenticfs/shared/.agentcore/skills \
+    AGENTCORE_WORKSPACES_DIR=/tmp/agentcore-workspaces \
     PYTHONUNBUFFERED=1
 EXPOSE 8080
 ENTRYPOINT []

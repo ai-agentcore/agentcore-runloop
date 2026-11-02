@@ -26,26 +26,26 @@ describe("instrumentEventStream", () => {
     observe(ev("run.end", { reason: "completed" }, 7_000));
 
     const out = registry.render();
-    expect(out).toContain('agentrun_runloop_events_total{event_type="run.start"} 1');
-    expect(out).toContain('agentrun_runloop_tool_calls_total{tool_type="exec",status="success",error_type="none"} 1');
+    expect(out).toContain('agentcore_runloop_events_total{event_type="run.start"} 1');
+    expect(out).toContain('agentcore_runloop_tool_calls_total{tool_type="exec",status="success",error_type="none"} 1');
     // tool duration 4000-2000 = 2s → falls in le="2" bucket
-    expect(out).toContain('agentrun_runloop_tool_call_duration_seconds_bucket{tool_type="exec",status="success",le="2"} 1');
-    expect(out).toContain("agentrun_runloop_turns_total 1");
+    expect(out).toContain('agentcore_runloop_tool_call_duration_seconds_bucket{tool_type="exec",status="success",le="2"} 1');
+    expect(out).toContain("agentcore_runloop_turns_total 1");
     // usage derived from run.usage, with agentCli carried over from run.start
     expect(out).toContain(
-      'agentrun_runloop_llm_tokens_total{agent_cli="codex",model="qwen3.7-max",kind="input"} 100',
+      'agentcore_runloop_llm_tokens_total{agent_cli="codex",model="qwen3.7-max",kind="input"} 100',
     );
     expect(out).toContain(
-      'agentrun_runloop_llm_tokens_total{agent_cli="codex",model="qwen3.7-max",kind="output"} 20',
+      'agentcore_runloop_llm_tokens_total{agent_cli="codex",model="qwen3.7-max",kind="output"} 20',
     );
     expect(out).toContain(
-      'agentrun_runloop_llm_cost_usd_total{agent_cli="codex",model="qwen3.7-max"} 0.02',
+      'agentcore_runloop_llm_cost_usd_total{agent_cli="codex",model="qwen3.7-max"} 0.02',
     );
-    expect(out).toContain('agentrun_runloop_runs_total{agent_cli="codex",status="success",error_type="none"} 1');
+    expect(out).toContain('agentcore_runloop_runs_total{agent_cli="codex",status="success",error_type="none"} 1');
     // run duration 7000-1000 = 6s
-    expect(out).toContain('agentrun_runloop_run_duration_seconds_sum{agent_cli="codex",status="success"} 6');
+    expect(out).toContain('agentcore_runloop_run_duration_seconds_sum{agent_cli="codex",status="success"} 6');
     // active runs back to 0
-    expect(out).toContain("agentrun_runloop_active_runs 0");
+    expect(out).toContain("agentcore_runloop_active_runs 0");
   });
 
   it("captures run.error code into the run's error_type label", () => {
@@ -55,7 +55,7 @@ describe("instrumentEventStream", () => {
     observe(ev("run.error", { error: { code: "LOOP_ERROR", message: "boom" } }, 1_000));
     observe(ev("run.end", { reason: "error" }, 2_000));
     expect(registry.render()).toContain(
-      'agentrun_runloop_runs_total{agent_cli="codex",status="error",error_type="loop_error"} 1',
+      'agentcore_runloop_runs_total{agent_cli="codex",status="error",error_type="loop_error"} 1',
     );
   });
 
@@ -64,9 +64,9 @@ describe("instrumentEventStream", () => {
     const observe = instrumentEventStream(collector);
     observe(ev("toolresult.end", { toolCallId: "orphan", isError: true }, 100));
     const out = registry.render();
-    expect(out).toContain('agentrun_runloop_tool_calls_total{tool_type="unknown",status="failure",error_type="tool_error"} 1');
+    expect(out).toContain('agentcore_runloop_tool_calls_total{tool_type="unknown",status="failure",error_type="tool_error"} 1');
     // no duration histogram without a start
-    expect(out).not.toContain("agentrun_runloop_tool_call_duration_seconds_count");
+    expect(out).not.toContain("agentcore_runloop_tool_call_duration_seconds_count");
   });
 
   it("emits run counter without duration when run.start is absent", () => {
@@ -74,8 +74,8 @@ describe("instrumentEventStream", () => {
     const observe = instrumentEventStream(collector);
     observe(ev("run.end", { reason: "completed" }, 5_000));
     const out = registry.render();
-    expect(out).toContain('agentrun_runloop_runs_total{agent_cli="unknown",status="success",error_type="none"} 1');
-    expect(out).not.toContain("agentrun_runloop_run_duration_seconds_count");
+    expect(out).toContain('agentcore_runloop_runs_total{agent_cli="unknown",status="success",error_type="none"} 1');
+    expect(out).not.toContain("agentcore_runloop_run_duration_seconds_count");
   });
 
   it("never throws even if the collector throws", () => {

@@ -108,8 +108,8 @@
   <rect x="60" y="388" width="1062" height="76" rx="8" fill="#f0fdfa" stroke="#99f6e4"/>
   <text x="72" y="408" class="box-title">RunRequest 组装 (app.ts)</text>
   <text x="72" y="426" class="box-sub">model → 指向 loopback /model/v1     ·     resources → 单个 MCP 资源指向 loopback /mcp</text>
-  <text x="72" y="442" class="box-sub">features = { toolBridge: "mcp", execViaMcp: true }     ·     agent = { cli: codex, systemPrompt, cwd }</text>
-  <text x="72" y="458" class="caption">本部署不传 Sandbox → 远程沙箱链路未启用（依赖仍在编译范围内）</text>
+  <text x="72" y="442" class="box-sub">toolBridge = "mcp"  ·  execViaMcp 由部署模式决定  ·  agent = { cli: codex, systemPrompt, cwd }</text>
+  <text x="72" y="458" class="caption">模型、MCP、Skill 与执行后端由 AgentCore 包装层配置，不接受请求覆盖</text>
 
   <!-- arrow harness -> kernel -->
   <path class="edge" d="M590,478 L590,510" marker-end="url(#arrow)"/>
@@ -122,13 +122,13 @@
   <!-- runner -->
   <rect x="60" y="548" width="330" height="72" rx="8" fill="#fff" stroke="#c4b5fd"/>
   <text x="72" y="568" class="box-title">loop/runner.ts  编排</text>
-  <text x="72" y="586" class="box-sub">起 SidecarServer + agentrun-mcp server</text>
+  <text x="72" y="586" class="box-sub">起 SidecarServer + runloop-mcp server</text>
   <text x="72" y="600" class="box-sub">构建系统提示词 · 拉起 Codex</text>
   <text x="72" y="614" class="box-sub">loop/run.ts 单会话状态机</text>
 
   <!-- mcp aggregator -->
   <rect x="404" y="548" width="330" height="72" rx="8" fill="#fff" stroke="#c4b5fd"/>
-  <text x="416" y="568" class="box-title">mcp/  agentrun-mcp 聚合器</text>
+  <text x="416" y="568" class="box-title">mcp/  runloop-mcp 聚合器</text>
   <text x="416" y="586" class="box-sub">Codex 只连它；下游 MCP / openapi /</text>
   <text x="416" y="600" class="box-sub">子 agent / 沙箱全部聚合其后</text>
   <text x="416" y="614" class="box-sub">tools/list 静态清单 → 懒连校正</text>
@@ -136,7 +136,7 @@
   <!-- acp -->
   <rect x="748" y="548" width="374" height="72" rx="8" fill="#fff" stroke="#c4b5fd"/>
   <text x="760" y="568" class="box-title">acp/ + provider/proxy.ts</text>
-  <text x="760" y="586" class="box-sub">Codex ⇄ Runloop 事件适配 (stdio/ACP)</text>
+  <text x="760" y="586" class="box-sub">Codex ⇄ Runloop 事件适配 (JSONL)</text>
   <text x="760" y="600" class="box-sub">模型请求代理 · 事件归一化</text>
   <text x="760" y="614" class="box-sub">events/ · hitl/ · resources/</text>
 
@@ -147,7 +147,7 @@
   <rect x="72" y="668" width="330" height="60" rx="8" fill="#ffedd5" stroke="#fb923c"/>
   <text x="84" y="686" class="box-title">SidecarServer.gatedExecute()</text>
   <text x="84" y="702" class="box-sub">唯一带闸门的执行入口</text>
-  <text x="84" y="716" class="box-sub">MCP 与 shell 隧道共用同一道闸</text>
+  <text x="84" y="716" class="box-sub">MCP 工具调用统一进入审批闸门</text>
 
   <rect x="414" y="668" width="330" height="60" rx="8" fill="#ffedd5" stroke="#fb923c"/>
   <text x="426" y="686" class="box-title">maybeSuspend()  HITL 三层判定</text>
@@ -156,18 +156,18 @@
 
   <rect x="756" y="668" width="354" height="60" rx="8" fill="#ffedd5" stroke="#fb923c"/>
   <text x="768" y="686" class="box-title">执行后端选择</text>
-  <text x="768" y="702" class="box-sub">本地 workspace  ·  或 RemoteSandboxBackend</text>
+  <text x="768" y="702" class="box-sub">本地工具  ·  或 AgentCore 注入 ExecBackend</text>
   <text x="768" y="716" class="box-sub">forwardNestedResolution 子 agent 委派</text>
 
   <rect x="72" y="738" width="1038" height="54" rx="8" fill="#fff" stroke="#fdba74"/>
   <text x="84" y="756" class="box-sub" font-weight="700" fill="#9a3412">工具实现：</text>
-  <text x="84" y="776" class="box-sub">shell-exec · file-tools · image-tools · skill-tools · web-caller · openapi-caller · mcp-proxy · ssrf</text>
-  <text x="640" y="756" class="box-sub" font-weight="700" fill="#9a3412">远程沙箱链路 (当前未启用)：</text>
-  <text x="640" y="776" class="box-sub">agentrun-client (@alicloud/agentrun20250910) · sandbox-provisioner · exec-backend · remote-sandbox</text>
+  <text x="84" y="776" class="box-sub">shell-exec · file-tools · image-tools · mcp-proxy · ssrf</text>
+  <text x="640" y="756" class="box-sub" font-weight="700" fill="#9a3412">AgentCore 远端执行后端：</text>
+  <text x="640" y="776" class="box-sub">src/sandbox/ → Agent Sandbox (E2B) → ExecBackend</text>
 
   <!-- arrow kernel -> codex -->
   <path class="edge" d="M590,820 L590,856" marker-end="url(#arrow)"/>
-  <text x="600" y="842" class="flow">stdio / ACP</text>
+  <text x="600" y="842" class="flow">codex exec --json / stdio</text>
 
   <!-- ============ Codex ============ -->
   <rect x="330" y="858" width="520" height="60" rx="10" fill="#0f172a" stroke="#0f172a"/>

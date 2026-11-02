@@ -365,20 +365,8 @@ async function dispatchToolCall(
 
   if (tool.kind === "openapi") {
     const r = tool.resource;
-    // SANDBOX_TEMPLATE：懒创建实例、把实例 endpoint 绑成 serverUrl（同会话多 operation 共享、结束回收）。
-    let serverUrlOverride: string | undefined;
-    if (r.resourceType === "SANDBOX_TEMPLATE" && ctx.sandboxProvisioner) {
-      try {
-        serverUrlOverride = await ctx.sandboxProvisioner.ensureServerUrl(r, ctx.credentials);
-      } catch (err) {
-        return {
-          content: [{ type: "text", text: JSON.stringify({ error: `sandbox provisioning failed: ${err instanceof Error ? err.message : String(err)}` }) }],
-          isError: true,
-        };
-      }
-    }
     // 真实 HTTP 调用：按 operation 拼 URL/method、args→body/query、auth.mode 签名/透传（见 openapi-caller）。
-    const result = await callOpenapiTool(r, tool.op, args, ctx.credentials, { globalHeaders: ctx.headers, serverUrlOverride, idempotencyKey: ctx.idempotencyKey, log: ctx.log, toolName: name });
+    const result = await callOpenapiTool(r, tool.op, args, ctx.credentials, { globalHeaders: ctx.headers, idempotencyKey: ctx.idempotencyKey, log: ctx.log, toolName: name });
     return { content: [{ type: "text", text: result }], isError: result.startsWith('{"error"') };
   }
 

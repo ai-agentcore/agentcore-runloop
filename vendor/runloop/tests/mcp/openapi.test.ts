@@ -9,7 +9,7 @@ import {
 } from "@/mcp/openapi.js";
 import type { Resource } from "@/types/resources.js";
 
-const SERVER = "https://acct.agentrun-data.cn-hangzhou.aliyuncs.com";
+const SERVER = "https://tools.example.com";
 
 describe("extractOperations", () => {
   it("returns [] for undefined config", () => {

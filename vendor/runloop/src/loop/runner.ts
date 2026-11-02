@@ -13,11 +13,9 @@ import { convertResources } from "../resources/converter.js";
 import { resolvePendingHitl, derivePolicies } from "../hitl/resume.js";
 import { OpenAIHitlPhrasing } from "../hitl/phrasing.js";
 import { OpenAIHitlSurfaceMapper } from "../hitl/surface-map.js";
-import { CliAgentAdapter, type AgentAdapter } from "../acp/adapter.js";
-import { StreamJsonAdapter } from "../acp/stream-json-adapter.js";
-import { AcpAdapter, AcpServerAdapter } from "../acp/acp-adapter.js";
+import { type AgentAdapter } from "../acp/adapter.js";
 import { CodexAdapter } from "../acp/codex-adapter.js";
-import { AgentCliRegistry, validateAgentCli, type AgentCliEntry } from "../acp/registry.js";
+import { AgentCliRegistry, type AgentCliEntry } from "../acp/registry.js";
 import type { LlmJudge } from "../hitl/judge.js";
 import { RunManager } from "./run.js";
 import { applyModelEnvDefaults } from "./model-defaults.js";
@@ -25,7 +23,7 @@ import { ModelProviderProxy } from "../provider/proxy.js";
 import { SidecarServer } from "../sidecar/server.js";
 import { EXEC_TOOLS_PROMPT, remoteExecPrompt } from "../sidecar/file-tools.js";
 import { setupWorkspaceTools } from "../sidecar/workspace.js";
-import { AgentrunMcpServer } from "../mcp/server.js";
+import { RunloopMcpServer } from "../mcp/server.js";
 import { collectDelegationToolNames, sanitizeToolName, buildOutboundNameMap } from "../mcp/tool-registry.js";
 import { Logger, loggerOptionsFromEnv, type LoggerOptions } from "../util/logger.js";
 import { buildSystemPrompt, resolveResourceMode } from "./prompt-builder.js";
@@ -34,13 +32,12 @@ import { MergeNormalizer } from "../events/merge-normalizer.js";
 import { imageCredentialName, type ImageCredentialProvider } from "../sidecar/image-tools.js";
 import type { ExecBackend } from "../sidecar/exec-backend.js";
 
-export type AdapterType = "cli" | "stream-json" | "acp" | "acp-server" | "codex";
+export type AdapterType = "codex";
 
 export interface RunnerOptions {
   defaultAdapterType?: AdapterType;
   llmJudge?: LlmJudge;
   agentRegistry?: Record<string, AgentCliEntry>;
-  allowUnregisteredAgents?: boolean;
   logDir?: string;
   workspacesDir?: string;
   imageCredentialProvider?: ImageCredentialProvider;
@@ -51,7 +48,6 @@ export class LoopRunner {
   private defaultAdapterType: AdapterType;
   private llmJudge: LlmJudge | null;
   private registry: AgentCliRegistry;
-  private allowUnregisteredAgents: boolean;
   private logDir: string | undefined;
   private workspacesDir: string | undefined;
   private loggerConfig: LoggerOptions;
@@ -59,10 +55,9 @@ export class LoopRunner {
   private executionBackends = new Map<string, ExecBackend>();
 
   constructor(options: RunnerOptions = {}) {
-    this.defaultAdapterType = options.defaultAdapterType ?? "acp-server";
+    this.defaultAdapterType = options.defaultAdapterType ?? "codex";
     this.llmJudge = options.llmJudge ?? null;
     this.registry = new AgentCliRegistry(options.agentRegistry);
-    this.allowUnregisteredAgents = options.allowUnregisteredAgents ?? false;
     this.logDir = options.logDir ?? process.env.AGENTCORE_LOG_DIR;
     const ws = options.workspacesDir ?? process.env.AGENTCORE_WORKSPACES_DIR;
     this.workspacesDir = ws ? resolve(ws) : undefined;
@@ -119,7 +114,6 @@ export class LoopRunner {
       await Promise.all(available.map(async (name) => {
         const entry = this.registry.resolve(name)!;
         // 数据驱动预热：CLI 在注册表声明 prewarm 规格，runner 通用执行（不再硬编码 codex flags）。
-        // 未声明 prewarm 的 CLI（如 claude-code）直接跳过——新增 CLI 只动注册表，不动这里。
         const spec = entry.prewarm;
         if (!spec) return;
 
@@ -192,7 +186,7 @@ export class LoopRunner {
 
     let proxy: ModelProviderProxy | null = null;
     let sidecar: SidecarServer | null = null;
-    let mcpServer: AgentrunMcpServer | null = null;
+    let mcpServer: RunloopMcpServer | null = null;
     // 提到 try 外，让 catch 的 run.error 路径也能在终止前 flush 未闭合 message（L10）。
     let normalizer: MergeNormalizer | null = null;
     const injectedEvents: RunloopEvent[] = [];
@@ -228,23 +222,12 @@ export class LoopRunner {
       const resources = request.resources
         ? convertResources(request.resources, { extractNonMcp: true })
         : { mcpConfig: { mcpServers: {} }, systemPromptAppend: "" };
-      // 非 MCP 资源暴露方式：features.toolBridge 控制，默认 mcp（进程内 agentcore-mcp server，
-      // codex 原生调用）；cli 为降级（.tools/agentrun shell 隧道）。runner 据此 gate MCP server / CLI 脚本。
+      // Tools use MCP; remote execution is injected by the AgentCore wrapper.
       const resourceMode = resolveResourceMode(request);
-      // 部署形态（AGENTCORE_REMOTE_SHELL）+ Sandbox 共同决定 shell/文件执行后端，与 execViaMcp 正交：
-      //  - **传入 Sandbox（任一实例形态）**：执行/文件一律路由到该隔离沙箱数据面（远端后端，密钥不外泄），
-      //    注入内置工具、关 codex 内建 shell。这是 Sandbox 语义本身——给了沙箱就用沙箱的 shell。
-      //  - **系统实例**（env 已设）：runloop 持系统级密钥、多租共享。codex **永不**碰本地 shell
-      //    （shell_tool=false 恒成立、本地 bash/file 一律不注入）；无 Sandbox = 零执行能力（纯推理 + 平台工具）。
-      //  - **用户实例**（默认，env 未设）且**无 Sandbox**：危险环境，本地 shell 允许，归属由 features.execViaMcp 决定。
       const remoteShell =
         process.env.AGENTCORE_REMOTE_SHELL === "1" || process.env.AGENTCORE_REMOTE_SHELL === "true";
-      const sandboxResources = resources.nonMcpResources?.sandboxes ?? [];
-      // 远端执行后端：**只要传入了 Sandbox 就用它**（不再要求 AGENTCORE_REMOTE_SHELL）。多 Sandbox 取首个，
-      // 其余仍作各自的 openapi 工具暴露。SidecarServer 收到该资源即构建 RemoteSandboxBackend（见 server.ts）。
-      const remoteExecSandbox = sandboxResources[0];
       const configuredExecBackend = this.executionBackends.get(session.conversationId);
-      const hasRemoteSandbox = Boolean(remoteExecSandbox || configuredExecBackend);
+      const hasRemoteSandbox = Boolean(configuredExecBackend);
       // 命令执行归属（AD-030，仅「用户实例 + 无 Sandbox」时生效）：features.execViaMcp 显式优先 → 缺省默认 true
       // （走我们的 MCP）；env AGENTCORE_EXEC_VIA_MCP=0 为运维全局 kill-switch（仅当请求未显式指定时生效）。
       const execViaMcp =
@@ -254,35 +237,20 @@ export class LoopRunner {
       // 是否注入内置执行/文件工具（bash/read_file/...）：
       //  - 有 Sandbox → 一定注入，后端 = 远端隔离沙箱（无视 remoteShell / execViaMcp）；
       //  - 无 Sandbox：系统实例 = 零执行（不注入）；用户实例 = 跟随 execViaMcp（后端 = 本地 bash）。
-      const execToolsEnabled = hasRemoteSandbox ? true : remoteShell ? false : execViaMcp;
+      const execToolsEnabled = hasRemoteSandbox || (!remoteShell && execViaMcp);
       const configuredImageCredential = imageCredentialName();
       const imageToolsEnabled = (execToolsEnabled || Boolean(request.localSandbox)) && !hasRemoteSandbox && !!this.imageCredentialProvider
         && !!configuredImageCredential && configuredImageCredential !== "0";
       // 是否关掉 codex 内建 shell（shell_tool=false）：有 Sandbox → 关（改走沙箱）；
       //  无 Sandbox：系统实例恒关、用户实例跟随 execViaMcp。
-      const disableBuiltinShell = hasRemoteSandbox ? true : remoteShell ? true : execViaMcp;
+      const disableBuiltinShell = hasRemoteSandbox || remoteShell || execViaMcp;
       // 注入执行工具时保证有一份（可能为空的）非 MCP 资源容器，让 sidecar/mcp server 能启动并挂载工具。
       if ((execToolsEnabled || imageToolsEnabled) && !resources.nonMcpResources) {
         resources.nonMcpResources = { tools: [], skills: [], subAgents: [], sandboxes: [], mcpServers: [] };
       }
-      // 执行后端沙箱（remoteExecSandbox）从「openapi 工具暴露」剔除：它经 RemoteSandboxBackend 当 bash/文件
-      // 后端消费（SidecarServer 经 remoteExecSandbox 选项单独拿到完整资源，含数据面 operation），其数据面
-      // operation 不应再作为模型工具暴露——否则模型同时看到内置 bash/read_file 与 <sandbox>_exec/<sandbox>_read_file，
-      // 重复且混淆。两处派生工具的入口都要剔除，保持一致（否则系统提示词描述了一个 MCP 工具列表里不存在的工具）：
-      //   ① MCP 工具列表（buildToolIndex 读 nonMcpResources.sandboxes）；
-      //   ② 系统提示词「平台工具」段（buildSystemPrompt 内部 convertResources(request.resources) 重新派生）。
-      // 其余沙箱（多 Sandbox 场景）仍按 openapi 工具暴露。
-      let promptRequest = request;
-      if (remoteExecSandbox && resources.nonMcpResources) {
-        resources.nonMcpResources.sandboxes = resources.nonMcpResources.sandboxes.filter(
-          (s) => s !== remoteExecSandbox,
-        );
-        promptRequest = { ...request, resources: request.resources?.filter((r) => r !== remoteExecSandbox) };
-      }
       // 系统提示词：入参完整 RunRequest（身份 + 用户 prompt + 逐资源类型 section，按 mode 选模板）。
-      // 用 promptRequest（已剔除执行后端沙箱）保证提示词工具列表 == MCP 工具列表。
       // execToolsEnabled 同时决定 skill 读取措辞：有 shell→read_file 读 .agents/skills/；无 shell→get_skill。
-      let systemPrompt = buildSystemPrompt(promptRequest, { execToolsEnabled });
+      let systemPrompt = buildSystemPrompt(request, { execToolsEnabled });
       if (execToolsEnabled) {
         systemPrompt += "\n\n" + EXEC_TOOLS_PROMPT;
         // 远端隔离沙箱说明（系统实例 + Sandbox）：执行环境/工作目录/装依赖/skill 同步位置。
@@ -354,8 +322,6 @@ export class LoopRunner {
           imageCredentialName: configuredImageCredential,
           // Local CLI and MCP file/shell tools must share the deployment cwd.
           workdir: remoteShell || hasRemoteSandbox ? workspaceDir : (request.agent?.cwd ?? workspaceDir),
-          remoteExecSandbox,
-          remoteExecCwd: request.agent?.cwd,
           execBackend: configuredExecBackend,
           logger: runLoggerConfig,
         });
@@ -369,7 +335,7 @@ export class LoopRunner {
       //（HITL 主轨闸门），client tool 命中则短路成暂停（onToolPending）。
       const needMcpServer = (nonMcp && (resourceMode === "mcp" || execToolsEnabled)) || hasClientTools;
       if (needMcpServer) {
-        mcpServer = new AgentrunMcpServer({
+        mcpServer = new RunloopMcpServer({
           resources: nonMcp ?? { tools: [], skills: [], subAgents: [], sandboxes: [], mcpServers: [] },
           credentials: request.credentials,
           conversationId: session.conversationId,
@@ -392,7 +358,7 @@ export class LoopRunner {
         });
         await mcpServer.start();
         resources.mcpConfig.mcpServers["agentcore"] = { type: "http", url: `${mcpServer.baseUrl}/mcp` };
-        log.info("agentrun mcp server started", { baseUrl: mcpServer.baseUrl });
+        log.info("runloop mcp server started", { baseUrl: mcpServer.baseUrl });
       }
 
       // HITL execute-on-resume：在启动 codex 之前处理历史中已审批的挂起 toolcall，
@@ -479,20 +445,7 @@ export class LoopRunner {
       // workspaceDir 已在前面提前计算并 mkdir（execViaMcp 需要它作为 shell 工具的执行 cwd）。
       if (workspaceDir) {
         if (sidecar && resources.nonMcpResources) {
-          // cli 模式生成 .tools/agentrun shell 隧道（指向 sidecar 端口）；mcp 模式不生成。
-          // credentials 用于 SKILL downloadUrl 的 RAM 签名下载。
-          await setupWorkspaceTools(workspaceDir, resources.nonMcpResources, systemPrompt, {
-            cliSidecarPort: resourceMode === "cli" ? sidecar.port : undefined,
-            credentials: request.credentials,
-            logger: log,
-            // 有 Sandbox：skill 改由沙箱内直接下载（Change B），本地不落盘（「有沙箱不用落本地盘」）。
-            skipSkillDownload: hasRemoteSandbox,
-          });
-          log.info("workspace tools generated", { workspaceDir, resourceMode });
-          // 有 Sandbox：在沙箱内 curl 下载解包 skill（remote cwd 下），让沙箱内 read_file/bash 可读可跑。
-          if (remoteExecSandbox) {
-            await sidecar.initRemoteSandbox({ localWorkspaceDir: workspaceDir });
-          }
+          await setupWorkspaceTools(workspaceDir, resources.nonMcpResources, systemPrompt);
         }
         log.info("session workspace", { workspaceDir });
       }
@@ -723,18 +676,11 @@ export class LoopRunner {
   }
 
   resolveCliCommand(agentCli: string): string {
+    if (agentCli !== "codex") throw new Error("Only codex is supported");
     const entry = this.registry.resolve(agentCli);
     if (entry) return entry.command;
 
-    if (!this.allowUnregisteredAgents) {
-      throw new Error(`Agent CLI "${agentCli}" is not registered. Available: ${this.registry.listRegistered().join(", ")}`);
-    }
-
-    if (!validateAgentCli(agentCli)) {
-      throw new Error(`Agent CLI "${agentCli}" contains invalid characters`);
-    }
-
-    return agentCli;
+    throw new Error("Codex is not registered");
   }
 
   private createAdapter(
@@ -749,24 +695,8 @@ export class LoopRunner {
       registryEntry?.adapterType ??
       this.defaultAdapterType;
 
-    const hitlEnabled = request.hitl?.enabled ?? false;
-    const permissionMode = hitlEnabled ? "default" : "bypass_permissions";
+    if (adapterType !== "codex") throw new Error("Only codex is supported");
+    return new CodexAdapter(cliCommand, { logger: loggerConfig });
 
-    switch (adapterType) {
-      case "stream-json":
-        return new StreamJsonAdapter(cliCommand, { permissionMode });
-      case "acp":
-        return new AcpAdapter(cliCommand, { logger: loggerConfig });
-      case "acp-server":
-        return new AcpServerAdapter(cliCommand, {
-          logger: loggerConfig,
-          defaultArgs: registryEntry?.defaultArgs,
-        });
-      case "codex":
-        return new CodexAdapter(cliCommand, { logger: loggerConfig });
-      case "cli":
-      default:
-        return new CliAgentAdapter(cliCommand, { permissionMode });
-    }
   }
 }

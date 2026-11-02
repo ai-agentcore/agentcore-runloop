@@ -1,12 +1,4 @@
-// SSRF 出站守卫（H1）。
-//
-// 资源 URL（openapiConfig.servers / mcpConfig.url / AGENT invoke endpoint）可由请求体影响，服务端会据此
-// 发起 fetch/MCP 连接并透传 headers 或签名请求。对**用户自填**（auth.mode !== "agentrun"）的出站目标做
-// 协议白名单 + 解析后 IP 范围拦截，拒绝 loopback / RFC1918 私网 / 169.254 链路本地（含 169.254.169.254
-// 云元数据）/ 100.64 CGNAT / IPv6 ULA·link-local / IPv4-mapped IPv6。agentrun 平台内网域名（RAM 签名）豁免。
-//
-// 注意：单做入站 allowlist 挡不住 302 重定向绕过。调用方二选一：① 对 fetch 设 redirect:"error"（mcp-proxy）；
-// ② 设 redirect:"manual"、逐跳对 Location 目标再调 assertOutboundAllowed 后才跟随（skill-download，需跟随到 OSS）。
+// Outbound requests must pass URL/IP validation. Only server-registered loopback MCP endpoints are exempt.
 
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
@@ -65,40 +57,6 @@ export async function assertOutboundAllowed(rawUrl: string): Promise<void> {
     if (isBlockedAddress(address)) {
       throw new SsrfBlockedError(`blocked private/loopback/metadata address ${address} (host ${host})`);
     }
-  }
-}
-
-// agentrun 平台域名白名单（R1）：auth.mode=agentrun 的出站目标**不能**用 IP 级 assertOutboundAllowed
-// 校验——VPC dns-mapping 会把 *.agentrun-data-vpc...aliyuncs.com 解析到内网 NLB IP，IP 级会误杀合法目标。
-// 改为**域名前缀白名单**（DNS 前判定）：必须是 aliyun 域名，借此挡掉 169.254 元数据 / 127 环回 / RFC1918
-// 私网等 IP 直连与任意外部域名。即不再把 auth.mode 当信任边界——所有请求体可控 URL 都过 SSRF 校验。
-const AGENTRUN_HOST_SUFFIXES = [".aliyuncs.com", ".aliyuncsslb.com"];
-
-// 生产恒开；测试经 __setAgentrunHostCheckForTest(false) 临时关，便于连本地 mock server（127.0.0.1）
-// 验证签名/转发等管路（同 __setSsrfLookupForTest 的用意，不削弱生产 SSRF 策略）。
-let agentrunHostCheckEnabled = true;
-export function __setAgentrunHostCheckForTest(enabled: boolean): void {
-  agentrunHostCheckEnabled = enabled;
-}
-
-/** 校验 agentrun 出站 URL：协议 http(s) + host 非 IP 字面量 + 落在 aliyun 域名白名单内（同步，无 DNS）。 */
-export function assertAgentrunHostAllowed(rawUrl: string): void {
-  if (!agentrunHostCheckEnabled) return;
-  let u: URL;
-  try {
-    u = new URL(rawUrl);
-  } catch {
-    throw new SsrfBlockedError(`invalid outbound URL`);
-  }
-  if (u.protocol !== "http:" && u.protocol !== "https:") {
-    throw new SsrfBlockedError(`blocked non-http(s) outbound protocol: ${u.protocol}`);
-  }
-  const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (isIP(host) !== 0) {
-    throw new SsrfBlockedError(`agentrun outbound target must be a domain, got IP literal ${host}`);
-  }
-  if (!AGENTRUN_HOST_SUFFIXES.some((s) => host.endsWith(s))) {
-    throw new SsrfBlockedError(`agentrun outbound host not in allowlist: ${host}`);
   }
 }
 

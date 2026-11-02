@@ -47,7 +47,7 @@ describe("convertResources (no options)", () => {
         resourceType: "SKILL",
         protocol: "openapi",
         openapiConfig: {
-          servers: [{ url: "https://acct-ram.agentrun-data.cn-hangzhou.aliyuncs.com" }],
+          servers: [{ url: "https://tools.example.com" }],
           paths: { "/skills/code-review/download": { get: { operationId: "download" } } },
         },
       },
@@ -85,7 +85,7 @@ describe("convertResources (no options)", () => {
           servers: [{ url: "https://agent.example.com" }],
           paths: { "/invoke": { post: { operationId: "invoke" } } },
         },
-        auth: { mode: "agentrun" },
+        auth: { mode: "none" },
       },
     ]);
     expect(result.systemPromptAppend).toBe("");
@@ -118,7 +118,7 @@ describe("convertResources (no options)", () => {
         resourceType: "SKILL",
         protocol: "openapi",
         openapiConfig: {
-          servers: [{ url: "https://acct-ram.agentrun-data.cn-hangzhou.aliyuncs.com" }],
+          servers: [{ url: "https://tools.example.com" }],
           paths: { "/skills/skill-tool/download": { get: { operationId: "download" } } },
         },
       },
@@ -172,7 +172,7 @@ describe("convertResources (with extractNonMcp)", () => {
         resourceType: "SKILL",
         protocol: "openapi",
         openapiConfig: {
-          servers: [{ url: "https://acct-ram.agentrun-data.cn-hangzhou.aliyuncs.com" }],
+          servers: [{ url: "https://tools.example.com" }],
           paths: { "/skills/sk1/download": { get: { operationId: "download" } } },
         },
       },
@@ -185,7 +185,7 @@ describe("convertResources (with extractNonMcp)", () => {
           servers: [{ url: "https://bot.example.com" }],
           paths: { "/invoke": { post: { operationId: "invoke" } } },
         },
-        auth: { mode: "agentrun" },
+        auth: { mode: "none" },
       },
       {
         resourceId: "sb1",

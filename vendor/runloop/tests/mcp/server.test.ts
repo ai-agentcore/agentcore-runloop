@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { __setSsrfLookupForTest } from "@/sidecar/ssrf.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { AgentrunMcpServer } from "@/mcp/server.js";
+import { RunloopMcpServer } from "@/mcp/server.js";
 import { FILE_TOOL_DESCRIPTORS } from "@/sidecar/file-tools.js";
 import type { NonMcpResources, McpToolResult } from "@/mcp/types.js";
 import type { Resource } from "@/types/resources.js";
@@ -37,7 +37,7 @@ const REVIEW_SKILL: Resource = {
   protocol: "openapi",
   openapiConfig: {
     openapi: "3.0.0",
-    servers: [{ url: "https://acct.agentrun-data.cn-hangzhou.aliyuncs.com" }],
+    servers: [{ url: "https://tools.example.com" }],
     paths: { "/skills/review/download": { get: { operationId: "download" } } },
   },
 };
@@ -53,7 +53,7 @@ const BOT_AGENT: Resource = {
     servers: [{ url: "https://example.com/bot" }],
     paths: { "/invoke": { post: { operationId: "invoke" } } },
   },
-  auth: { mode: "agentrun" },
+  auth: { mode: "none" },
 };
 
 const PY_SANDBOX: Resource = {
@@ -86,8 +86,8 @@ const EMPTY: NonMcpResources = {
   sandboxes: [],
 };
 
-describe("AgentrunMcpServer", () => {
-  let server: AgentrunMcpServer;
+describe("RunloopMcpServer", () => {
+  let server: RunloopMcpServer;
 
   // openapi 工具（mode=none）调用会过 SSRF 守卫做 DNS；注入假解析器返公网 IP，避免依赖真实网络。
   beforeEach(() => __setSsrfLookupForTest(async () => [{ address: "203.0.113.1" }]));
@@ -97,7 +97,7 @@ describe("AgentrunMcpServer", () => {
   });
 
   it("starts on a random port and stops cleanly", async () => {
-    server = new AgentrunMcpServer({ resources: EMPTY });
+    server = new RunloopMcpServer({ resources: EMPTY });
     const port = await server.start();
     expect(port).toBeGreaterThan(0);
     expect(server.baseUrl).toBe(`http://127.0.0.1:${port}`);
@@ -106,14 +106,14 @@ describe("AgentrunMcpServer", () => {
   });
 
   it("handles initialize via handleJsonRpc", async () => {
-    server = new AgentrunMcpServer({ resources: RESOURCES });
+    server = new RunloopMcpServer({ resources: RESOURCES });
     const res = await server.handleJsonRpc({ jsonrpc: "2.0", id: 1, method: "initialize" });
     expect(res.result).toHaveProperty("protocolVersion");
-    expect((res.result as any).serverInfo.name).toBe("agentrun-mcp");
+    expect((res.result as any).serverInfo.name).toBe("runloop-mcp");
   });
 
   it("lists tools via handleJsonRpc", async () => {
-    server = new AgentrunMcpServer({ resources: RESOURCES });
+    server = new RunloopMcpServer({ resources: RESOURCES });
     const res = await server.handleJsonRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" });
     const tools = (res.result as any).tools;
     const names = tools.map((t: { name: string }) => t.name);
@@ -126,7 +126,7 @@ describe("AgentrunMcpServer", () => {
   });
 
   it("returns empty tools for empty resources", async () => {
-    server = new AgentrunMcpServer({ resources: EMPTY });
+    server = new RunloopMcpServer({ resources: EMPTY });
     const res = await server.handleJsonRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" });
     expect((res.result as any).tools).toEqual([]);
   });
@@ -140,7 +140,7 @@ describe("AgentrunMcpServer", () => {
     });
     vi.stubGlobal("fetch", spy as unknown as typeof fetch);
     try {
-      server = new AgentrunMcpServer({ resources: RESOURCES });
+      server = new RunloopMcpServer({ resources: RESOURCES });
       const res = await server.handleJsonRpc({
         jsonrpc: "2.0", id: 1, method: "tools/call",
         params: { name: "function__calc__calc", arguments: { expr: "2+2" } },
@@ -157,7 +157,7 @@ describe("AgentrunMcpServer", () => {
   });
 
   it("returns error for unknown tool via handleJsonRpc", async () => {
-    server = new AgentrunMcpServer({ resources: RESOURCES });
+    server = new RunloopMcpServer({ resources: RESOURCES });
     const res = await server.handleJsonRpc({
       jsonrpc: "2.0", id: 1, method: "tools/call",
       params: { name: "nonexistent", arguments: {} },
@@ -166,13 +166,13 @@ describe("AgentrunMcpServer", () => {
   });
 
   it("returns method-not-found for unknown method", async () => {
-    server = new AgentrunMcpServer({ resources: RESOURCES });
+    server = new RunloopMcpServer({ resources: RESOURCES });
     const res = await server.handleJsonRpc({ jsonrpc: "2.0", id: 1, method: "unknown/method" });
     expect(res.error?.code).toBe(-32601);
   });
 
   it("HTTP POST works with official MCP transport", async () => {
-    server = new AgentrunMcpServer({ resources: RESOURCES });
+    server = new RunloopMcpServer({ resources: RESOURCES });
     await server.start();
 
     const res = await fetch(server.baseUrl + "/mcp", {
@@ -185,12 +185,12 @@ describe("AgentrunMcpServer", () => {
     });
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(body).toContain("agentrun-mcp");
+    expect(body).toContain("runloop-mcp");
   });
 
   it("wires emit callback without crash", async () => {
     const emitted: RunloopEvent[] = [];
-    server = new AgentrunMcpServer({
+    server = new RunloopMcpServer({
       resources: RESOURCES,
       conversationId: "s1",
       emit: (event) => emitted.push(event),
@@ -203,7 +203,7 @@ describe("AgentrunMcpServer", () => {
   });
 
   it("GET /mcp is handled by transport", async () => {
-    server = new AgentrunMcpServer({ resources: RESOURCES });
+    server = new RunloopMcpServer({ resources: RESOURCES });
     await server.start();
 
     const res = await fetch(server.baseUrl + "/mcp", { method: "GET" });
@@ -212,7 +212,7 @@ describe("AgentrunMcpServer", () => {
   });
 
   it("DELETE /mcp is handled by transport", async () => {
-    server = new AgentrunMcpServer({ resources: RESOURCES });
+    server = new RunloopMcpServer({ resources: RESOURCES });
     await server.start();
 
     const res = await fetch(server.baseUrl + "/mcp", { method: "DELETE" });
@@ -220,7 +220,7 @@ describe("AgentrunMcpServer", () => {
   });
 
   it("rejects an oversized request body (H2 body limit)", async () => {
-    server = new AgentrunMcpServer({ resources: RESOURCES });
+    server = new RunloopMcpServer({ resources: RESOURCES });
     await server.start();
     const huge = "x".repeat(17 * 1024 * 1024); // > 16MiB 上限
     // readBody 超限 reject + req.destroy()：客户端可能拿到非 2xx，也可能因连接被毁而 fetch 抛错。
@@ -234,7 +234,7 @@ describe("AgentrunMcpServer", () => {
   });
 
   it("PUT returns 405 Method Not Allowed", async () => {
-    server = new AgentrunMcpServer({ resources: RESOURCES });
+    server = new RunloopMcpServer({ resources: RESOURCES });
     await server.start();
 
     const res = await fetch(server.baseUrl + "/mcp", { method: "PUT" });
@@ -250,7 +250,7 @@ describe("AgentrunMcpServer", () => {
       calls.push({ name, args });
       return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }], isError: false };
     };
-    server = new AgentrunMcpServer({ resources: EMPTY, extraTools: FILE_TOOL_DESCRIPTORS, executeTool });
+    server = new RunloopMcpServer({ resources: EMPTY, extraTools: FILE_TOOL_DESCRIPTORS, executeTool });
     await server.start();
 
     const client = new Client({ name: "c2-test", version: "0.1" });
@@ -281,12 +281,12 @@ describe("AgentrunMcpServer", () => {
   });
 });
 
-describe("AgentrunMcpServer — 分支补全", () => {
-  let server: AgentrunMcpServer;
+describe("RunloopMcpServer — 分支补全", () => {
+  let server: RunloopMcpServer;
   afterEach(async () => { vi.unstubAllGlobals(); if (server) await server.stop(); });
 
   it("handleJsonRpc：无 id → 回 0；tools/call 无 params / 无 arguments", async () => {
-    server = new AgentrunMcpServer({ resources: EMPTY });
+    server = new RunloopMcpServer({ resources: EMPTY });
     const noId = await server.handleJsonRpc({ jsonrpc: "2.0", method: "tools/list" });
     expect(noId.id).toBe(0);                                  // request.id ?? 0
     const noParams = await server.handleJsonRpc({ jsonrpc: "2.0", id: 1, method: "tools/call" });
@@ -302,14 +302,14 @@ describe("AgentrunMcpServer — 分支补全", () => {
         requestBody: { content: { "application/json": { schema: { type: "object", properties: { arr: { type: "array" }, obj: { type: "object" } }, required: ["arr"] } } } } } } } },
       auth: { mode: "none" },
     };
-    server = new AgentrunMcpServer({ resources: { ...EMPTY, tools: [fc] } });
+    server = new RunloopMcpServer({ resources: { ...EMPTY, tools: [fc] } });
     await server.start(); // registerTools 构建 zod，命中 array/object 分支
     const res = await server.handleJsonRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" });
     expect((res.result as { tools: Array<{ name: string }> }).tools.some((t) => t.name === "function__ao__ao")).toBe(true);
   });
 
   it("HTTP：非法 JSON body / 未 initialize 的 POST → 400", async () => {
-    server = new AgentrunMcpServer({ resources: EMPTY });
+    server = new RunloopMcpServer({ resources: EMPTY });
     await server.start();
     // 非法 JSON（196 catch 分支）+ 未 init（202）→ 400
     const bad = await fetch(server.baseUrl + "/mcp", { method: "POST", headers: { "content-type": "application/json" }, body: "{not json" });
@@ -324,7 +324,7 @@ describe("AgentrunMcpServer — 分支补全", () => {
     const CT = [{ name: "open_file_picker", description: "Let user pick a file", parameters: { type: "object", properties: { hint: { type: "string" } } } }];
 
     it("client tool 出现在 tools/list（client__ 前缀名，给模型看）", async () => {
-      server = new AgentrunMcpServer({ resources: EMPTY, clientTools: CT });
+      server = new RunloopMcpServer({ resources: EMPTY, clientTools: CT });
       const res = await server.handleJsonRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" });
       expect((res.result as { tools: Array<{ name: string }> }).tools.some((t) => t.name === "client__open_file_picker")).toBe(true);
     });
@@ -333,7 +333,7 @@ describe("AgentrunMcpServer — 分支补全", () => {
       const emitted: RunloopEvent[] = [];
       const pending: Array<{ toolName: string; toolCallId: string }> = [];
       const execute = vi.fn(async () => ({ content: [{ type: "text" as const, text: "SHOULD_NOT_RUN" }], isError: false }));
-      server = new AgentrunMcpServer({
+      server = new RunloopMcpServer({
         resources: EMPTY, clientTools: CT, conversationId: "s1",
         emit: (e) => emitted.push(e),
         onToolPending: (info) => pending.push({ toolName: info.toolName, toolCallId: info.toolCallId }),
@@ -365,7 +365,7 @@ describe("AgentrunMcpServer — 分支补全", () => {
       const emitted: RunloopEvent[] = [];
       const pending: Array<{ toolName: string }> = [];
       const CT2 = [{ name: "ask-user.now", description: "ask", parameters: { type: "object", properties: {} } }];
-      server = new AgentrunMcpServer({
+      server = new RunloopMcpServer({
         resources: EMPTY, clientTools: CT2, conversationId: "s1",
         emit: (e) => emitted.push(e),
         onToolPending: (info) => pending.push({ toolName: info.toolName }),
@@ -382,7 +382,7 @@ describe("AgentrunMcpServer — 分支补全", () => {
 
     it("非 client tool 不受影响（仍走 execute）", async () => {
       const execute = vi.fn(async () => ({ content: [{ type: "text" as const, text: "EXECUTED" }], isError: false }));
-      server = new AgentrunMcpServer({ resources: EMPTY, clientTools: CT, extraTools: [{ name: "real_tool", description: "d", inputSchema: { type: "object", properties: {} } }], executeTool: execute });
+      server = new RunloopMcpServer({ resources: EMPTY, clientTools: CT, extraTools: [{ name: "real_tool", description: "d", inputSchema: { type: "object", properties: {} } }], executeTool: execute });
       const res = await server.handleJsonRpc({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "real_tool", arguments: {} } });
       expect(execute).toHaveBeenCalledOnce();
       expect((res.result as McpToolResult).content[0].text).toBe("EXECUTED");

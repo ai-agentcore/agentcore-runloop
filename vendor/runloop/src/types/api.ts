@@ -1,4 +1,4 @@
-// 此文件由 scripts/generate-server.ts 从 spec/openapi.json 自动生成，请勿手动编辑。
+// Runloop internal types for the AgentCore Codex distribution.
 import { z } from "zod";
 import {
   ModelConfigSchema,
@@ -21,7 +21,7 @@ export const RunRequestSchema = z.object({
   resources: z.array(ResourceSchema).optional(),
   clientTools: z.array(ClientToolSchema).optional(),
   credentials: CredentialsSchema.optional(),
-  headers: z.record(z.string(), z.string()).describe("Extra HTTP headers forwarded to downstream agentrun resource calls (global default; merged with per-resource headers, resource-level wins). Runloop's own signing/required headers always win.").optional(),
+  headers: z.record(z.string(), z.string()).describe("Extra HTTP headers forwarded to downstream resource calls (global default; merged with per-resource headers, resource-level wins).").optional(),
   hitl: HitlConfigSchema.optional(),
   features: FeaturesSchema.optional(),
 });

@@ -246,6 +246,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   );
   const mcpServers = parseUniqueNames(env.AGENTCORE_MCP_SERVERS, "AGENTCORE_MCP_SERVERS");
 
+  if (env.AGENTCORE_AGENT_CLI && env.AGENTCORE_AGENT_CLI !== "codex") {
+    throw new Error("AGENTCORE_AGENT_CLI only supports codex");
+  }
+
   return {
     host: env.HOST ?? "127.0.0.1",
     port,

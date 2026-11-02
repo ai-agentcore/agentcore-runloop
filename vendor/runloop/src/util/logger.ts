@@ -270,7 +270,7 @@ function sanitizePathSegment(value: string): string {
 
 function categoryFileName(module: string): string {
   if (module === "http") return "server.log";
-  if (module === "agentrun") return "agentrun.log";
+  if (module === "runloop") return "tools.log";
   return "runloop.log";
 }
 
@@ -377,7 +377,6 @@ function redact(value: unknown, redactKeys: string[]): unknown {
     if (redactKeys.some((pattern) => key.toLowerCase().includes(pattern.toLowerCase()))) {
       out[key] = "***";
     } else if (key.toLowerCase() === "headers" && val && typeof val === "object" && !Array.isArray(val)) {
-      // 透传头（RunRequest.headers）键名动态（如 x-agentrun-transparent-* / 自定义租户凭证头），
       // 按 key 名子串匹配挡不住 → 对 headers 子树**与 key 名无关地**把所有 value 脱敏，保留 key 便于排查（L11）。
       out[key] = maskAllValues(val as Record<string, unknown>);
     } else {

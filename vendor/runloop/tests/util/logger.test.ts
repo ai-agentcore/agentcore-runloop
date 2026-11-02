@@ -179,7 +179,7 @@ describe("Logger", () => {
     log.info("payload", {
       headers: {
         "x-tenant-cred": "supersecret",
-        "x-agentrun-transparent-tenant": "t-123",
+        "x-platform-tenant": "t-123",
         "content-type": "application/json",
       },
     });
@@ -188,9 +188,9 @@ describe("Logger", () => {
     const line = readJsonLines(readFileSync(join(dir, "runloop.log"), "utf-8"), "secure")[0];
     // 非常规凭证头键名不含 token/secret 等子串，但 value 仍被脱敏；key 保留便于排查。
     expect(line.headers["x-tenant-cred"]).toBe("***");
-    expect(line.headers["x-agentrun-transparent-tenant"]).toBe("***");
+    expect(line.headers["x-platform-tenant"]).toBe("***");
     expect(line.headers["content-type"]).toBe("***");
-    expect(Object.keys(line.headers).sort()).toEqual(["content-type", "x-agentrun-transparent-tenant", "x-tenant-cred"]);
+    expect(Object.keys(line.headers).sort()).toEqual(["content-type", "x-platform-tenant", "x-tenant-cred"]);
   });
 
   it("caps every log file at maxFileBytes", async () => {
@@ -227,12 +227,12 @@ describe("Logger", () => {
   it("routes top-level category files to the desired layout", async () => {
     const dir = makeTmpDir();
     new Logger("http", { logDir: dir }).info("http request");
-    new Logger("agentrun", { logDir: dir }).info("mcp request");
+    new Logger("runloop", { logDir: dir }).info("mcp request");
     new Logger("model", { logDir: dir }).info("model request");
     await closeAllLogStreams();
 
     expect(readFileSync(join(dir, "server.log"), "utf-8")).toContain("http request");
-    expect(readFileSync(join(dir, "agentrun.log"), "utf-8")).toContain("mcp request");
+    expect(readFileSync(join(dir, "tools.log"), "utf-8")).toContain("mcp request");
     expect(readFileSync(join(dir, "runloop.log"), "utf-8")).toContain("model request");
   });
 

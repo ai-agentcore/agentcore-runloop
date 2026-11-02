@@ -4,19 +4,9 @@ import { descriptorsFor, renderToolList, type ResourceMode } from "./render.js";
 
 export type { ResourceMode } from "./render.js";
 
-/** 资源调用总则（资源块顶部一次）：mcp=原生直接调用、禁止 shell 模拟；cli=经 .tools/agentrun。 */
 function renderResourceIntro(mode: ResourceMode): string {
-  if (mode === "cli") {
-    return [
-      "# 可用的 AgentRun 工具",
-      "",
-      "当你需要调用子 Agent 或使用平台资源来完成用户请求时，**必须**通过 `exec_command` 执行 `.tools/agentrun call` 命令真正调用工具，不能只在回复文本里描述调用意图。无需平台资源即可回答的请求，直接自然回答即可。",
-      "",
-      "通过 `.tools/agentrun` CLI 调用以下工具，**不要直接用 curl**。每个工具下方给出了示例命令。",
-    ].join("\n");
-  }
   return [
-    "# 可用的 AgentRun 工具",
+    "# 可用的平台工具",
     "",
     "你的工具列表中**已经包含**以下工具，可以像调用任何其它工具一样**直接按名字调用**。",
     "",

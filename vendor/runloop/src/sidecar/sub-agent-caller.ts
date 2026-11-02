@@ -1,14 +1,12 @@
 import type { ClientTool, Credentials, Resource } from "../types/resources.js";
 import type { RunloopEvent } from "../types/events.js";
 import { EventType } from "../types/events.js";
-import { buildSignedRequest } from "./agentrun-sign.js";
-import { assertOutboundAllowed, assertAgentrunHostAllowed, SsrfBlockedError } from "./ssrf.js";
+import { assertOutboundAllowed, SsrfBlockedError } from "./ssrf.js";
 import { translateChildEvent } from "./event-translator.js";
 import { deriveAgentEndpoint, delegationProtocol } from "../mcp/openapi.js";
 import { compressEvents } from "../events/compress.js";
 import { buildA2aRequestBody, buildA2aResumeBody, extractA2aError, extractA2aText, isA2aCardUrl, chooseA2aServiceEndpoint } from "./a2a.js";
 import { logResourceRequest, logResourceResponse, type ResourceCallLogger } from "./resource-log.js";
-import { rewriteToInternalEndpoint } from "./internal-endpoint.js";
 import { envPositiveInt } from "../util/env.js";
 import { createHash } from "node:crypto";
 
@@ -155,7 +153,7 @@ export async function callSubAgent(
     timeout?: number;
     /** 空闲超时（毫秒）：连续无任何输出超过该时长则主动断开。默认 5min，env AGENTCORE_SUBAGENT_IDLE_TIMEOUT_MS 可覆盖。 */
     idleTimeout?: number;
-    /** 顶层 request.headers（全局），与资源级 agent.headers 合并、签名 header 优先级最高。 */
+    /** 顶层 request.headers（全局），与资源级 agent.headers 合并，资源 header 优先。 */
     globalHeaders?: Record<string, string>;
     /** HITL 嵌套 resume：向 runloop 子 agent 续发完整 events[]（含 user.command{resolve}），而非新 task。 */
     resumeEvents?: unknown[];
@@ -179,7 +177,6 @@ export async function callSubAgent(
   const authMode = agent.auth?.mode ?? "none";
 
   // SSRF 守卫（H1/R1）：所有子 agent invoke 端点都校验，不再把 auth.mode 当信任边界。
-  // 非 agentrun → IP 级 assertOutboundAllowed；agentrun → 域名白名单（DNS 前判定，VPC dns-mapping 安全）。
   try {
     await assertSubAgentTargetAllowed(rawUrl, authMode);
   } catch (err) {
@@ -224,12 +221,7 @@ export async function callSubAgent(
     });
   }
 
-  // 鉴权按 auth.mode（AD-027 鉴权轴，与 openapi-caller / mcp-proxy 一致）：agentrun → RAM 签名；
-  // none → 只透传 headers、不注入 AGENTRUN 签名（外部 ag-ui/chat-completions 子 agent 靠 headers 里的
-  // Bearer/apikey 自鉴权，被强行签名会破坏其鉴权）。对**实际端点** endpoint 签名（可能是 card 解析出的）。
-  const signed = authMode === "agentrun"
-    ? buildSignedRequest("POST", endpoint, body, credentials, "application/json")
-    : { url: endpoint, headers: {} as Record<string, string> };
+  const target = { url: endpoint };
 
   const controller = new AbortController();
   const { totalMs, idleMs } = resolveSubAgentTimeouts(options);
@@ -265,13 +257,13 @@ export async function callSubAgent(
   const startedAt = Date.now();
 
   try {
-    const response = await fetch(rewriteToInternalEndpoint(signed.url), {
+    const response = await fetch(target.url, {
       method: "POST",
       headers: {
         // 全局 headers 铺底 → 资源级 headers 覆盖 → runloop 签名/必备 header 优先级最高、覆盖之
         ...(options?.globalHeaders ?? {}),
         ...(agent.headers ?? {}),
-        ...signed.headers,
+
         accept: "text/event-stream",
       },
       body,
@@ -419,10 +411,9 @@ export async function callSubAgent(
   }
 }
 
-/** 子 agent 目标端点 SSRF 校验（按 auth.mode 分流，初始端点与 card 解析端点共用）。 */
+/** 子 agent 目标端点 SSRF 校验（初始端点与 card 解析端点共用）。 */
 async function assertSubAgentTargetAllowed(url: string, authMode: string): Promise<void> {
-  if (authMode !== "agentrun") await assertOutboundAllowed(url);
-  else assertAgentrunHostAllowed(url);
+  await assertOutboundAllowed(url);
 }
 
 /**
@@ -437,19 +428,15 @@ async function resolveA2aCardEndpoint(
   credentials: Credentials,
   globalHeaders?: Record<string, string>,
 ): Promise<string | { errorResult: string }> {
-  // GET card：agentrun 签名（无 body、不传 content-type）/ none 只透传 headers。
-  const signed = authMode === "agentrun"
-    ? buildSignedRequest("GET", cardUrl, "", credentials)
-    : { url: cardUrl, headers: {} as Record<string, string> };
+  const target = { url: cardUrl };
   try {
-    const res = await fetch(rewriteToInternalEndpoint(signed.url), {
+    const res = await fetch(target.url, {
       method: "GET",
-      headers: { ...(globalHeaders ?? {}), ...(agent.headers ?? {}), ...signed.headers, accept: "application/json" },
+      headers: { ...(globalHeaders ?? {}), ...(agent.headers ?? {}),  accept: "application/json" },
       redirect: "error", // 不跟随重定向（防 302 绕过 SSRF）。
     });
     if (!res.ok) return { errorResult: JSON.stringify({ error: `a2a agent-card fetch returned ${res.status}` }) };
     const card = await res.json().catch(() => undefined);
-    // 平台托管 a2a（auth=agentrun）忽略 card 内 localhost url，用 cardUrl 的 invocations 基址（L-052）。
     const resolved = chooseA2aServiceEndpoint(card, cardUrl, authMode);
     if (!resolved) return { errorResult: JSON.stringify({ error: "a2a agent-card has no service endpoint url" }) };
     await assertSubAgentTargetAllowed(resolved, authMode); // 二次 SSRF（card 可能指向别处）

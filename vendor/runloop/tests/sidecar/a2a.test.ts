@@ -12,7 +12,6 @@ import {
   extractA2aError,
   isA2aCardUrl,
   extractA2aCardEndpoint,
-  deriveA2aBaseFromCardUrl,
   chooseA2aServiceEndpoint,
 } from "@/sidecar/a2a.js";
 
@@ -177,20 +176,7 @@ describe("a2a — 协议助手", () => {
     const PLATFORM_BASE =
       "https://acct.funagent-data-pre.cn-hangzhou.aliyuncs.com/agent-runtimes/bot/endpoints/Default/invocations";
 
-    it("deriveA2aBaseFromCardUrl：去掉 well-known agent-card 后缀，返回 invocations 基址", () => {
-      expect(deriveA2aBaseFromCardUrl(PLATFORM_CARD)).toBe(PLATFORM_BASE);
-      expect(deriveA2aBaseFromCardUrl("https://x.aliyuncs.com/foo/.well-known/agent.json")).toBe("https://x.aliyuncs.com/foo");
-      expect(deriveA2aBaseFromCardUrl("https://x.aliyuncs.com/foo/")).toBe("https://x.aliyuncs.com/foo");
-    });
 
-    it("chooseA2aServiceEndpoint 平台托管（agentrun）：忽略 card 内 localhost url，改用 cardUrl 的 invocations 基址", () => {
-      // 平台托管 a2a 在容器内 listen localhost:9000、AgentCard.url 也写 localhost（不可外部访问）；
-      // 对外经数据面 invocations 反代。故端点须用 cardUrl 基址，否则取 card.url=localhost → SSRF 拦。
-      const card = { url: "http://localhost:9000", capabilities: { streaming: true } };
-      expect(chooseA2aServiceEndpoint(card, PLATFORM_CARD, "agentrun")).toBe(PLATFORM_BASE);
-      // card 无 url 也回退基址
-      expect(chooseA2aServiceEndpoint({}, PLATFORM_CARD, "agentrun")).toBe(PLATFORM_BASE);
-    });
 
     it("chooseA2aServiceEndpoint 外部（none）：信 card.url（标准 A2A，含本地 mock 127.0.0.1）", () => {
       expect(

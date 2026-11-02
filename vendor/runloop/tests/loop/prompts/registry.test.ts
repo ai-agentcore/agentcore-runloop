@@ -5,15 +5,15 @@ describe("createDefaultRegistry", () => {
   const registry = createDefaultRegistry();
 
   it("registers super-agent prompt", () => {
-    expect(registry.has("super-agent")).toBe(true);
-    const rendered = registry.render("super-agent");
-    expect(rendered).toContain("AgentRun 的超级 Agent");
-    expect(rendered).toContain("绝不允许");
+    expect(registry.has("agentcore-agent")).toBe(true);
+    const rendered = registry.render("agentcore-agent");
+    expect(rendered).toContain("Alibaba Cloud AgentCore");
+    expect(rendered).toContain("Never approve");
   });
 
   it("registers sub-agent-coordination prompt", () => {
     expect(registry.has("sub-agent-coordination")).toBe(true);
-    expect(registry.render("sub-agent-coordination")).toContain("子 Agent");
+    expect(registry.render("sub-agent-coordination")).toContain("sub-agents");
   });
 
   it("registers model operational prompts", () => {

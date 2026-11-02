@@ -1,8 +1,6 @@
 export { LoopRunner, type AdapterType, type RunnerOptions } from "./loop/runner.js";
 export { RunManager } from "./loop/run.js";
-export { CliAgentAdapter, type AgentAdapter, type AgentRunParams } from "./acp/adapter.js";
-export { StreamJsonAdapter } from "./acp/stream-json-adapter.js";
-export { AcpAdapter, AcpServerAdapter, AcpProcessAdapter, BaseAcpAdapter } from "./acp/acp-adapter.js";
+export { type AgentAdapter, type AgentRunParams } from "./acp/adapter.js";
 export { CodexAdapter } from "./acp/codex-adapter.js";
 export { AgentProcess } from "./acp/process.js";
 export { convertResources } from "./resources/converter.js";

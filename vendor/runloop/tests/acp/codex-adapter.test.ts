@@ -132,39 +132,9 @@ echo '{"type":"turn.completed","usage":{"input_tokens":200,"output_tokens":30}}'
     expect((toolResult as any).isError).toBe(false);
   });
 
-  it("suppresses command_execution for .tools/agentrun delegation calls", async () => {
-    // 委派调用（.tools/agentrun call）的生命周期由 sidecar 拥有，adapter 必须抑制
-    // codex 这张重复的 exec_command 卡片，否则会双重渲染 + tool_call id 撕裂。
-    const script = createScript(
-      "mock-codex-delegate.sh",
-      `echo '{"type":"thread.started","thread_id":"t1"}'
-echo '{"type":"turn.started"}'
-echo '{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"/bin/bash -lc \\".tools/agentrun call search_bot_delegate {}\\"","aggregated_output":"sub-agent result","exit_code":0,"status":"completed"}}'
-echo '{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"Done"}}'
-echo '{"type":"turn.completed","usage":{"input_tokens":200,"output_tokens":30}}'`
-    );
-
-    const adapter = new CodexAdapter(script);
-    const events = await collectEvents(
-      adapter.run({
-        conversationId: "codex-delegate-test",
-        messages: [{ role: "user", content: "delegate" }],
-        config: { mcpConfig: { mcpServers: {} }, systemPromptAppend: "" },
-        // 严格统一命名：委派工具名 = `<资源名>_delegate`，按权威名集合识别委派并抑制重复卡片。
-        delegationToolNames: new Set(["search_bot_delegate"]),
-      })
-    );
-
-    // adapter 不应为委派 exec 产出任何 tool_call 事件
-    expect(events.some((e) => e.type === EventType.ToolcallStart)).toBe(false);
-    expect(events.some((e) => e.type === EventType.ToolcallEnd)).toBe(false);
-    expect(events.some((e) => e.type === EventType.ToolresultEnd)).toBe(false);
-    // 但正常的 agent_message 仍然产出
-    expect(events.some((e) => e.type === EventType.MessageDelta || e.type === EventType.MessageStart)).toBe(true);
-  });
 
   it("suppresses mcp_tool_call card for client tools (消费通道 2)；非客户端工具仍渲染", async () => {
-    // 客户端工具的权威 toolcall.start/end 由 agentrun-mcp server 经 ctx.emit 发；adapter 抑制 codex 自产的
+    // 客户端工具的权威 toolcall.start/end 由 runloop-mcp server 经 ctx.emit 发；adapter 抑制 codex 自产的
     // 重复 mcp_tool_call 卡片（matchesQualifiedName，同委派，AD-026 增补）。三个 mcp_tool_call 覆盖判定全分支：
     //  ① 裸名命中（rawName === name）→ 抑制；② 全限定名精确命中（rawName === `mcp__agentcore__name`）→ 抑制；③ 非客户端工具 → 仍渲染。
     const script = createScript(

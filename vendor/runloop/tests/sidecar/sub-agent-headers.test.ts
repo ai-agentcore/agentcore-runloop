@@ -1,17 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
 import { callSubAgent } from "@/sidecar/sub-agent-caller.js";
-import { __setAgentrunHostCheckForTest } from "@/sidecar/ssrf.js";
 import type { Resource } from "@/types/resources.js";
 
 const creds = { accessKeyId: "ak", accessKeySecret: "sk", region: "cn-hangzhou", accountId: "123" };
 
 describe("callSubAgent — header merge precedence (档1 headers passthrough)", () => {
   let server: Server | null = null;
-  beforeEach(() => __setAgentrunHostCheckForTest(false)); // 连本地 mock；R1 拦截另由专门用例覆盖
-  afterEach(() => { server?.close(); server = null; __setAgentrunHostCheckForTest(true); });
+   // 连本地 mock；R1 拦截另由专门用例覆盖
+  afterEach(() => { server?.close(); server = null;  });
 
-  it("merges global headers + resource headers; runloop signing header wins", async () => {
+  it("merges global headers + resource headers; resource headers take precedence", async () => {
     let received: Record<string, string | string[] | undefined> = {};
     const { port } = await new Promise<{ port: number }>((resolve) => {
       server = createServer((req, res) => {
@@ -32,7 +31,7 @@ describe("callSubAgent — header merge precedence (档1 headers passthrough)", 
         paths: { "/invoke": { post: { operationId: "invoke" } } },
       },
       headers: { "X-Resource-Level": "res", "X-Shared": "from-resource" },
-      auth: { mode: "agentrun" },
+      auth: { mode: "none" },
     };
 
     await callSubAgent(agent, "task", creds, {
@@ -45,6 +44,6 @@ describe("callSubAgent — header merge precedence (档1 headers passthrough)", 
     expect(received["x-resource-level"]).toBe("res");
     expect(received["x-shared"]).toBe("from-resource");
     // runloop signing header always present (wins)
-    expect(received["agentrun-authorization"]).toBeDefined();
+    expect(received["agentrun-authorization"]).toBeUndefined();
   });
 });

@@ -1,165 +1,108 @@
-# AgentCore Sandbox service
+# AgentCore Runloop
 
-This branch starts a **pure Sandbox HTTP service**, without a model, Agent loop,
-AgentCore resource discovery, STS broker, or remote sandbox dependency. Historical
-Agent code remains in the repository for reference; it is not mounted by this entrypoint.
-The previous deployment documentation is archived in [agent-mode-reference](docs/agent-mode-reference.md).
+简体中文 | [English](README.en.md)
 
-## Isolation
+> **将 Codex 部署到 AgentCore。**
+> 技能 · MCP 工具 · 文件与命令执行 · 流式交互 · 结果交付
+
+## 概要
+
+**在 AgentCore 基础设施上运行 Codex，把任务理解、工具执行和结果交付接成一个完整的 Agent 服务。**
+
+Codex 负责规划任务、调用工具并根据执行结果继续工作；AgentCore 提供模型连接、托管 Skill、MCP 资源和运行基础设施。本项目将两者连接起来，通过 AG-UI / SSE 向控制台或业务应用输出执行进度与最终答案，并支持交付生成的文件。
+
+这是面向 AgentCore 自定义代码 / 镜像模式的示例代码包，提供镜像构建和部署教程。你可以替换模型、绑定业务工具和技能、调整系统提示词，把 Codex 的执行能力接入自己的应用。
+
+[开始部署](docs/agentcore-guide.md) · [应用场景](#应用场景) · [完整配置](docs/reference.md)
 
 ```mermaid
 flowchart LR
-  C[Agent / curl] --> A[Authenticated HTTP API]
-  A --> S[Codex native OS sandbox]
-  S --> W[Shared mount: uid/session only]
-  S -. denied .-> O[Other sessions and network]
+    User[用户 / 业务应用] --> API[AG-UI / SSE]
+    subgraph AgentCore[AgentCore 基础设施]
+        API --> Codex[Codex：规划 → 执行 → 继续推进]
+        Codex <--> Model[模型连接]
+        Codex <--> Skill[托管 Skill]
+        Codex <--> MCP[MCP 业务工具]
+        Codex --> Execution[文件与命令执行]
+        Codex --> Result[执行进度 / 最终答案 / 文件交付]
+    end
+    Result --> User
 ```
 
-Each deployed instance is bound to one deployment-configured user and session.
-Every command AND file operation runs through `codex sandbox`, using the existing
-native permissions-profile builder with **only the session directory writable**.
-Minimal system/runtime reads are granted; the shared mount, parent user directory,
-control home, and arbitrary host paths are not granted. Network is disabled.
-Environment variables are explicitly allowlisted, with no platform credential inheritance.
-The CLI configuration home is separate from the writable session. Preflight failure
-returns 503; there is no unrestricted execution fallback.
+## 支持的能力
 
-The container runs as `coder`, not root. Mount ownership must allow that user to
-create `<AGENTCORE_WORKDIR>/<uid>/<session>`. Reserve these parent directories for
-this service: other privileged writers must not rename/replace them during use.
-Use a dedicated data mount outside system/runtime directories. Do not mount secrets
-inside runtime-readable directories or the session directory. Native filesystem/network
-sandboxing is not a substitute for container isolation, memory/CPU/PID limits, or
-platform identity protection. Separate service instances remain the isolation boundary
-for mutually untrusted processes. Shared storage alone does not imply shared processes.
+| 能力 | 可以做什么 | 配置 / 接口 |
+| --- | --- | --- |
+| 模型连接 | 通过 AgentCore 模型连接驱动 Codex 执行循环 | `AGENTCORE_MODEL_CONNECTION`、`AGENTCORE_MODEL_NAME` |
+| Skill | 加载托管技能与附带脚本，支持 `name@version` 固定版本 | `AGENTCORE_SKILLS` |
+| MCP | 发现并调用绑定的业务工具；单个 MCP 发现失败时上报 warning 并跳过 | `AGENTCORE_MCP_SERVERS` |
+| 文件与命令执行 | 按部署选择本地执行、远端沙箱或仅工具模式 | `AGENTCORE_EXECUTION` |
+| 附件与文件交付 | 处理已确认的附件，将生成文件发布为可供应用访问的 `/f/<file-id>` 引用 | 附件协议、`publish_artifact`；需配置存储与文件访问服务 |
+| 流式交互与人工确认 | 输出执行活动、工具事件和最终答案，支持客户端工具与审批恢复 | `/ag-ui/agent` |
 
-Codex 0.155.0 is pinned in the image. Linux must permit its native sandbox backend;
-restricted container environments may reject it. Run `npm run smoke:native-service`
-on the **target Linux image, mount and runtime policy** before deployment. A successful
-macOS test is not proof of Linux enforcement. Do not enable privileged mode as a fallback.
+### 执行模式
 
-## Configuration and startup
+| 模式 | 文件 / Shell 在哪里执行 | 适用方式 |
+| --- | --- | --- |
+| `local`（默认） | Agent 容器内，受 Codex 原生 OS 沙箱约束 | 需要读写工作目录、运行脚本；须通过运行环境隔离预检 |
+| `sandbox` | 通过 MCP 转发到 Agent Sandbox | 文件与命令放在远端沙箱；失败不会回退到本地 |
+| `tools-only` | 关闭本地文件与 Shell 执行 | 以模型和已绑定 MCP 工具完成任务 |
 
-Copy `.env.example` to a private `.env` and supply:
+执行模式是部署配置，不接受单次请求覆盖。[隔离边界与配置说明](docs/reference.md#执行隔离local--sandbox)。
 
-| Variable | Meaning |
-| --- | --- |
-| `AGENTCORE_WORKDIR` | Required absolute shared-storage root |
-| `AGENTCORE_SANDBOX_UID` | Required deployment-bound user ID |
-| `AGENTCORE_SANDBOX_SESSION_ID` | Required deployment-bound session ID |
-| `AGENTCORE_RUNLOOP_API_TOKEN` | Required random secret of at least 32 characters |
-| `AGENTCORE_HOST` | Listen address, default `127.0.0.1`; image uses `0.0.0.0` |
-| `AGENTCORE_PORT` | Port, default `8080` |
-| `AGENTCORE_SANDBOX_CLI` | Trusted Codex executable, default `codex` |
+## 应用场景
 
-IDs allow letters, digits, `_` and `-`, up to 128 characters. These values are deployment
-configuration, not client request fields. Clients of an instance share its session authority.
-Use TLS and authenticated platform routing for exposed deployments.
+以下是可以组合现有能力实现的场景，**不是已经验证的客户落地案例**。
+
+| 场景 | Agent 工作流程 | 预期交付 |
+| --- | --- | --- |
+| 运营数据分析 | 读取已上传的 CSV → 运行计算脚本 → 汇总异常和结论 → 发布文件 | Markdown 报告、结果 CSV |
+| 企业知识与业务查询 | 通过 MCP 查询业务系统 → 使用 Skill 中的规则处理结果 → 向用户说明依据 | 带来源的回答、结构化结果 |
+| 文档与代码处理 | 读取工作区材料 → 按 Skill 执行检查或转换 → 必要时请求确认 → 交付结果 | 检查报告、转换后的文件 |
+
+例如，运营分析场景可以从“分析这份销售 CSV，找出异常并生成报告”开始，由 Codex 读取附件、调用分析脚本，再通过 `publish_artifact` 交付报告。接入应用需要配置附件存储和文件访问服务；业务规则可以封装为 Skill，数据查询可以接入 MCP。
+
+上述流程尚待端到端验证。后续案例将附上可复现的输入、Skill/MCP 配置与实际交付物。
+
+## 性能
+
+4C8G 部署的串行短回答复测中，5 个成功样本的首文本 P50 为 **1.33 秒**，完成 P50 为 **1.92 秒**；第 6 次请求返回 HTTP 429 后停止。首文本包含活动文本，不等于模型服务端首 Token；本轮不作为稳定性能基线。[测试条件、完整时延与失败记录](docs/performance.md)。
+
+## 快速使用
+
+**部署到 AgentCore：**阅读[在 AgentCore 上使用](docs/agentcore-guide.md)，完成镜像构建、平台配置和首次对话。教程也说明了代码包部署需要准备的内容。
+
+**本地查看接口：**准备 Node.js 22+ 和 Codex CLI 后，在项目根目录执行：
 
 ```sh
 npm ci
-npm run build
-npm start
+npm run dev:mock
 ```
 
-The listener starts independently of storage; `/readyz` prepares the session and runs
-native sandbox preflight. Failures can be retried after fixing mount/runtime permissions.
-`/healthz` reports process liveness. Neither endpoint exposes paths or credentials.
-
-## HTTP API
-
-All `/v1/*` endpoints require `Authorization: Bearer <token>`.
-Examples assume `SANDBOX_URL` and `SANDBOX_TOKEN` are set in the caller's shell.
+在另一个终端发送示例请求：
 
 ```sh
-curl "$SANDBOX_URL/v1/exec" \
-  -H "Authorization: Bearer $SANDBOX_TOKEN" \
+curl -N http://127.0.0.1:8080/ag-ui/agent \
   -H 'Content-Type: application/json' \
-  -d '{"command":"/bin/bash","args":["-lc","printf hello > result.txt; cat result.txt"],"timeoutMs":30000}'
-
-curl -X PUT "$SANDBOX_URL/v1/files?path=input.bin" \
-  -H "Authorization: Bearer $SANDBOX_TOKEN" --data-binary @input.bin
-
-curl "$SANDBOX_URL/v1/files?path=result.txt" \
-  -H "Authorization: Bearer $SANDBOX_TOKEN" --output result.txt
-
-curl "$SANDBOX_URL/v1/directories?path=." \
-  -H "Authorization: Bearer $SANDBOX_TOKEN"
+  --data-binary @examples/ag-ui.json
 ```
 
-- `POST /v1/exec`: synchronous command + args, optional timeout (1–60000 ms,
-  default 30000). Returns `stdout`, `stderr`, nullable `exitCode`, `timedOut`,
-  `truncated`. A nonzero command exit is an execution result, not an HTTP error.
-  Combined output is limited to 1 MiB; overflow terminates the process group.
-- `GET /v1/files`: binary download, maximum 8 MiB; relative `path` is required.
-- `PUT /v1/files`: binary upload, maximum 8 MiB; create-only, existing targets rejected.
-  Parent directories must exist (create via an exec command).
-- `GET /v1/directories`: list relative directory, default `.`, maximum 10000 entries
-  and 1 MiB serialized output.
-- File APIs reject absolute paths, traversal and symlinks, and use the native OS sandbox
-  as the final filesystem enforcement boundary. File failures return a generic 422.
-- One operation at a time per instance; concurrent operations receive 409. Invalid
-  input returns 400, missing/wrong token 401, oversized bodies 413, executor failures 503.
-- Shell cwd is fixed to the session root; use an explicit shell command to `cd` within it.
-  Request-supplied environment, session identity and permission overrides are rejected.
-- HTTP disconnection does not cancel execution; the configured deadline still applies.
-  No automatic retries, persistent jobs, PTY, streaming, E2B SDK compatibility or
-  cross-restart execution recovery are claimed in this first version. Commands should
-  remain foreground jobs; detached daemons are unsupported. Platform PID limits and
-  instance teardown remain necessary for malicious processes that detach themselves.
-- Output is returned to the authenticated caller, not logged. Host execution failures
-  are sanitized. Files persist according to the mounted storage's lifecycle.
+本地 mock 使用模拟的 AgentCore 资源和真实 Codex CLI，默认在 `127.0.0.1:8080` 监听；它用于体验接口和事件，不代表真实云端模型调用。若已有 `.env`，请使用空的可选资源配置，并按配置补充鉴权请求头。
 
-## Verification
+通过 `AGENTCORE_SYSTEM_PROMPT` 调整行为，在 `src/app.ts` 扩展请求处理。完整配置见 [.env.example](.env.example)；凭证与平台身份文件不得进入源码或镜像。
+
+## 文档与开发
+
+- [在 AgentCore 上使用](docs/agentcore-guide.md)：准备、部署、调试与排错。
+- [English deployment guide](docs/agentcore-guide.en.md)：英文使用路径。
+- [配置与实现参考](docs/reference.md)：接口、环境变量、附件、文件交付、观测和高级配置。
+- [AgentCore 官方部署指南](https://help.aliyun.com/zh/agentcore/high-code-agent-deployment-guide)：平台部署要求与控制台操作。
 
 ```sh
-npm run typecheck
-npm run test:coverage
-npm run build
-npm run smoke:native-service
+npm run verify
+npm run test:upstream
 ```
 
-Unit tests cover HTTP contracts and fail-closed paths. The native smoke test separately
-checks allowed operations, cross-session reads/writes, symlink escape and local network
-denial using real Codex; it does not call any model or cloud service.
+`src/main.ts` 是启动入口，`src/app.ts` 连接请求与 Agent 循环，`src/runtime.ts` 封装 AgentCore SDK，`vendor/runloop/` 提供 Codex 适配与执行内核。当前仅支持 Codex，不包含其他 CLI 或旧 AgentRun 平台集成。
 
-## Linux shared-storage verification
-
-A real Linux arm64 Podman test on 2026-10-27 passed 38 checkpoints using two
-non-root, non-privileged service containers mounting the same volume at `/shared`.
-Each instance was bound to `alice/a` or `alice/b`. A direct container diagnostic
-could read the sibling sentinel, while the service's sandboxed commands could not.
-Normal execution, binary upload/download and directory listing succeeded. Both
-sessions were denied sibling reads, overwrites and creates via absolute paths,
-parent traversal and symlink escapes. Sentinels remained unchanged.
-
-**Environment prerequisite:** default SELinux container labeling blocked bubblewrap's
-nested devpts mount; `/readyz` returned 503. The successful test used
-`--security-opt label=disable` only on the disposable service containers. Default
-seccomp, non-root execution and the full Codex filesystem/network policy remained
-in force. This is a disclosed test configuration, not an automatic service fallback.
-Production needs a compatible container/SELinux policy; this does not establish
-that an arbitrary default Docker/Kubernetes deployment will work.
-
-```sh
-podman build --format docker -t localhost/agentcore-sandbox:session-proof .
-PODMAN_CONNECTION=podman-machine-default-root \
-AGENTCORE_TEST_DISABLE_SELINUX_LABEL=1 \
-npm run verify:linux-sessions -- localhost/agentcore-sandbox:session-proof
-```
-
-Omit the test flag to test the default container label policy. The script creates
-randomly named containers and a disposable shared volume, generates temporary
-authentication secrets without printing them, and removes its containers, volume
-and credential files in `finally`. It never enables privileged mode. The optional
-`AGENTCORE_TEST_DIAGNOSTICS=1` prints results of fixed, nonsensitive probe commands.
-These are test-harness variables, not service deployment settings.
-
-Linux testing also exposed a Node stream-output regression on inherited socketpairs
-under network denial. A fixed trusted Bash transport now gives sandboxed commands
-real stdout/stderr pipes, preserves positional arguments and exit status, and waits
-for output to drain. Requested programs still execute through Codex; the transport
-never evaluates caller-supplied command text. The Linux HTTP binary roundtrip and
-Node stdout assertions reproduce and cover the original failure.
-
-See [verification evidence](docs/pure-sandbox-verification.md) for versions and limits.
+Codex 由镜像安装官方 `@openai/codex` 包，并通过子进程调用；本仓库不包含 Codex 本体源码。Codex 的许可证见 [Apache-2.0](https://github.com/openai/codex/blob/main/LICENSE)，分发镜像时须保留其许可证和适用的声明。

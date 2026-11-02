@@ -21,7 +21,7 @@ async function collect(gen: AsyncGenerator<RunloopEvent>): Promise<RunloopEvent[
 
 function makeRequest(overrides: Partial<RunRequest> = {}): RunRequest {
   return {
-    agent: { cli: "echo" },
+    agent: { cli: "codex" },
     events: [createEvent(EventType.UserMessage, "s1", { content: "hi", role: "user" })],
     model: { provider: "test", model: "m", baseUrl: "http://127.0.0.1:1/v1", apiKey: "k" },
     credentials: { accessKeyId: "ak", accessKeySecret: "sk", accountId: "1234567890123456", region: "cn-hangzhou" },
@@ -31,7 +31,7 @@ function makeRequest(overrides: Partial<RunRequest> = {}): RunRequest {
 
 const SANDBOX: Resource = {
   resourceId: "sbx-1", resourceName: "py", resourceType: "SANDBOX", protocol: "openapi", description: "sandbox",
-  openapiConfig: { openapi: "3.0.0", servers: [{ url: "https://1234567890123456.agentrun-data.cn-hangzhou.aliyuncs.com" }], paths: {} },
+  openapiConfig: { openapi: "3.0.0", servers: [{ url: "https://tools.example.com" }], paths: {} },
 } as Resource;
 
 const FUNCTIONCALL: Resource = {
@@ -44,7 +44,7 @@ const SANDBOX_WITH_OPS: Resource = {
   resourceId: "sbx-9", resourceName: "pybox", resourceType: "SANDBOX", protocol: "openapi", description: "sandbox",
   openapiConfig: {
     openapi: "3.0.0",
-    servers: [{ url: "https://1234567890123456.agentrun-data.cn-hangzhou.aliyuncs.com" }],
+    servers: [{ url: "https://tools.example.com" }],
     paths: {
       "/sandboxes/{id}/processes/cmd": { post: { operationId: "exec" } },
       "/sandboxes/{id}/files": { get: { operationId: "read_file" }, post: { operationId: "write_file" } },
@@ -52,7 +52,7 @@ const SANDBOX_WITH_OPS: Resource = {
       "/sandboxes/{id}/filesystem/mkdir": { post: { operationId: "mkdir" } },
     },
   },
-  auth: { mode: "agentrun" },
+  auth: { mode: "none" },
 } as Resource;
 
 // 下载 server 指向 127.0.0.1:1 → 签名下载瞬时失败（ECONNREFUSED）回落 frontmatter-only，
@@ -60,7 +60,7 @@ const SANDBOX_WITH_OPS: Resource = {
 const SKILL: Resource = {
   resourceId: "sk1", resourceName: "review", resourceType: "SKILL", protocol: "openapi", description: "审查代码",
   openapiConfig: { openapi: "3.0.0", servers: [{ url: "http://127.0.0.1:1" }], paths: { "/tools/review/download": { get: { operationId: "download" } } } },
-  auth: { mode: "agentrun" },
+  auth: { mode: "none" },
 } as Resource;
 
 function agentsMd(workspacesDir: string, conv: string): string {
@@ -84,45 +84,13 @@ describe("LoopRunner - AGENTCORE_REMOTE_SHELL 门控", () => {
     else delete process.env.AGENTCORE_REMOTE_SHELL;
     const workspacesDir = await mkdtemp(join(tmpdir(), "runloop-rs-"));
     dirs.push(workspacesDir);
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli", workspacesDir });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex", workspacesDir });
     await collect(runner.run(makeRequest({ conversationId: opts.conv, resources: opts.resources })));
     return agentsMd(workspacesDir, opts.conv);
   }
 
-  it("系统实例 + 传入 Sandbox → 注入执行/文件工具 + 远端沙箱环境说明", async () => {
-    const md = await runWith({ remote: true, resources: [SANDBOX], conv: "rs-sb" });
-    expect(md).toContain(EXEC_MARKER);
-    // 远端隔离沙箱说明（AD-033 提示词引导）
-    expect(md).toContain("## 执行环境（隔离沙箱）");
-    expect(md).toContain(".agents/skills/");
-  });
 
-  it("执行后端沙箱的数据面 operation 不暴露为模型工具（用 bash/read_file，不出 <sandbox>_exec）", async () => {
-    // SANDBOX_WITH_OPS 作为执行后端（sandboxes[0]）：其 exec/read_file/... operation 被 RemoteSandboxBackend
-    // 当 bash/文件后端消费，绝不应再经 buildToolIndex / 提示词「平台工具」段暴露为 pybox_exec 等模型工具。
-    const md = await runWith({ remote: true, resources: [SANDBOX_WITH_OPS], conv: "rs-noleak" });
-    // 内置执行/文件工具仍注入。
-    expect(md).toContain(EXEC_MARKER);
-    // 沙箱数据面 operation 不泄漏成模型工具（否则模型同时看到 bash 与 pybox_exec）。
-    expect(md).not.toContain("pybox_exec");
-    expect(md).not.toContain("pybox_read_file");
-    expect(md).not.toContain("pybox_write_file");
-    expect(md).not.toContain("pybox_list_directory");
-    expect(md).not.toContain("pybox_mkdir");
-    // 该执行沙箱是唯一资源 → 无其它平台工具，「平台工具」段不出现。
-    expect(md).not.toContain("## 平台工具");
-  });
 
-  it("系统实例 + Sandbox + agent.cwd → 沙箱环境说明带上工作目录", async () => {
-    const workspacesDir = await mkdtemp(join(tmpdir(), "runloop-rs-"));
-    dirs.push(workspacesDir);
-    process.env.AGENTCORE_REMOTE_SHELL = "1";
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli", workspacesDir });
-    const req = makeRequest({ conversationId: "rs-cwd", resources: [SANDBOX] });
-    req.agent = { cli: "echo", cwd: "/workspace" };
-    await collect(runner.run(req));
-    expect(agentsMd(workspacesDir, "rs-cwd")).toContain("工作目录为 `/workspace`");
-  });
 
   it("系统实例 + 无 Sandbox（仅 FunctionCall）→ 不注入执行/文件工具（零执行能力）", async () => {
     const md = await runWith({ remote: true, resources: [FUNCTIONCALL], conv: "rs-nosb" });
@@ -163,31 +131,13 @@ describe("LoopRunner - AGENTCORE_REMOTE_SHELL 门控", () => {
     expect(md).not.toContain("## Skill 文件访问"); // 旧 skillDirPrompt 段已移除（折叠进 skillsSection）
   });
 
-  it("用户实例（无 env）+ 传入 Sandbox → 注入执行/文件工具 + 走沙箱 shell（远端环境说明）", async () => {
-    // goal 2：AGENTCORE_REMOTE_SHELL 未开，但传入了 Sandbox，也应路由到沙箱 shell（而非本地 bash）。
-    const md = await runWith({ remote: false, resources: [SANDBOX], conv: "us-sb" });
-    expect(md).toContain(EXEC_MARKER); // 注入了 bash/file 工具
-    expect(md).toContain("## 执行环境（隔离沙箱）"); // 后端 = 远端沙箱（不是本地）
-    expect(md).toContain(".agents/skills/");
-  });
 
-  it("用户实例 + features.execViaMcp=false + 传入 Sandbox → 仍走沙箱 shell（Sandbox 语义优先）", async () => {
-    // 即使显式关掉 execViaMcp，传入 Sandbox 也应启用执行工具并路由到沙箱（关 codex 内建 shell）。
-    delete process.env.AGENTCORE_REMOTE_SHELL;
-    const workspacesDir = await mkdtemp(join(tmpdir(), "runloop-rs-"));
-    dirs.push(workspacesDir);
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli", workspacesDir });
-    await collect(runner.run(makeRequest({ conversationId: "us-sb-off", resources: [SANDBOX], features: { execViaMcp: false } })));
-    const md = agentsMd(workspacesDir, "us-sb-off");
-    expect(md).toContain(EXEC_MARKER);
-    expect(md).toContain("## 执行环境（隔离沙箱）");
-  });
 
   it("用户实例 + features.execViaMcp=false → 不注入（走 agent CLI 内建 shell）", async () => {
     delete process.env.AGENTCORE_REMOTE_SHELL;
     const workspacesDir = await mkdtemp(join(tmpdir(), "runloop-rs-"));
     dirs.push(workspacesDir);
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli", workspacesDir });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex", workspacesDir });
     await collect(runner.run(makeRequest({ conversationId: "us-off", features: { execViaMcp: false } })));
     // 无资源 + execViaMcp=false → 不建 workspace 工具，AGENTS.md 不含执行段
     expect(agentsMd(workspacesDir, "us-off")).not.toContain(EXEC_MARKER);
@@ -197,7 +147,7 @@ describe("LoopRunner - AGENTCORE_REMOTE_SHELL 门控", () => {
     delete process.env.AGENTCORE_REMOTE_SHELL;
     const workspacesDir = await mkdtemp(join(tmpdir(), "runloop-rs-"));
     dirs.push(workspacesDir);
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli", workspacesDir });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex", workspacesDir });
     const backend = { shell: vi.fn(), file: vi.fn(), interrupt: vi.fn(async () => {}) };
     runner.setExecutionBackend("injected", backend);
     await collect(runner.run(makeRequest({ conversationId: "injected", features: { execViaMcp: false } })));

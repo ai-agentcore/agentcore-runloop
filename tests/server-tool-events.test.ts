@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { AgentrunMcpServer } from "../vendor/runloop/src/mcp/server.js";
+import { RunloopMcpServer } from "../vendor/runloop/src/mcp/server.js";
 import { SidecarServer } from "../vendor/runloop/src/sidecar/server.js";
 import { CodexAdapter } from "../vendor/runloop/src/acp/codex-adapter.js";
 import { LoopRunner } from "../vendor/runloop/src/loop/runner.js";
@@ -39,7 +39,7 @@ it("sends grep start through AG-UI before file search returns", async () => {
   const config = resources();
   const sidecar = new SidecarServer({ resources: config, conversationId: "thread", emit, execShell: true });
   sidecar.enableToolEvents();
-  const server = new AgentrunMcpServer({ resources: config, conversationId: "thread", emit,
+  const server = new RunloopMcpServer({ resources: config, conversationId: "thread", emit,
     extraTools: fileTools.FILE_TOOL_DESCRIPTORS,
     executeTool: (name, input) => sidecar.gatedExecute(name, input) });
   expect(server.enableToolEvents().has("grep")).toBe(true);
@@ -86,7 +86,7 @@ it.each([false, true])("closes a failed call safely (throws=%s)", async throws =
     return { content: [{ type: "text", text: "search failed" }], isError: true };
   });
   const events: RunloopEvent[] = [];
-  const server = new AgentrunMcpServer({ resources: resources(), conversationId: "thread", emit: event => events.push(event),
+  const server = new RunloopMcpServer({ resources: resources(), conversationId: "thread", emit: event => events.push(event),
     extraTools: fileTools.FILE_TOOL_DESCRIPTORS });
   server.enableToolEvents();
   try {

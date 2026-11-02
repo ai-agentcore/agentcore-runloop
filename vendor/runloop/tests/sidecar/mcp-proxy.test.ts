@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createServer, type Server } from "node:http";
 import { callDownstreamMcpTool, listDownstreamMcpTools } from "@/sidecar/mcp-proxy.js";
-import { AgentrunMcpServer } from "@/mcp/server.js";
-import { __setSsrfLookupForTest, __setAgentrunHostCheckForTest } from "@/sidecar/ssrf.js";
+import { RunloopMcpServer } from "@/mcp/server.js";
+import { __setSsrfLookupForTest } from "@/sidecar/ssrf.js";
 import type { NonMcpResources } from "@/mcp/types.js";
 import type { Resource, Credentials } from "@/types/resources.js";
 
@@ -11,11 +11,11 @@ import type { Resource, Credentials } from "@/types/resources.js";
 // agentrun 模式：关掉域名白名单（R1）以连本地 mock（拦截行为另由专门用例覆盖，不削弱生产）。
 beforeEach(() => {
   __setSsrfLookupForTest(async () => [{ address: "203.0.113.1" }]);
-  __setAgentrunHostCheckForTest(false);
+
 });
 afterEach(() => {
   __setSsrfLookupForTest(null);
-  __setAgentrunHostCheckForTest(true);
+
 });
 
 const CREDS: Credentials = { accessKeyId: "ak", accessKeySecret: "sk", accountId: "1234567890123456", region: "cn-hangzhou" };
@@ -59,7 +59,7 @@ function stubUpstream(body: unknown) {
 }
 
 describe("mcp-proxy（聚合代理下游 MCP）", () => {
-  let server: AgentrunMcpServer;
+  let server: RunloopMcpServer;
   afterEach(async () => {
     vi.unstubAllGlobals();
     if (server) await server.stop();
@@ -67,7 +67,7 @@ describe("mcp-proxy（聚合代理下游 MCP）", () => {
 
   it("callDownstreamMcpTool: 连下游、转发 tools/call、透传结果（mode=none）", async () => {
     stubUpstream({ ok: true, expr: "2+2" });
-    server = new AgentrunMcpServer({ resources: DOWNSTREAM });
+    server = new RunloopMcpServer({ resources: DOWNSTREAM });
     await server.start();
 
     const res = await callDownstreamMcpTool(mcpResource(server.baseUrl), "function__calc__calc", { expr: "2+2" }, undefined);
@@ -76,33 +76,16 @@ describe("mcp-proxy（聚合代理下游 MCP）", () => {
     expect(data.ok).toBe(true);
   });
 
-  it("auth.mode=agentrun: 签名 fetch 仍能连本地下游（签名头被忽略）", async () => {
-    stubUpstream({ ok: true });
-    server = new AgentrunMcpServer({ resources: DOWNSTREAM });
-    await server.start();
-
-    const res = await callDownstreamMcpTool(mcpResource(server.baseUrl, "agentrun"), "function__calc__calc", { x: 1 }, CREDS);
-    expect(res.isError).toBe(false);
-    expect(JSON.parse(res.content[0].text).ok).toBe(true);
-  });
 
   it("listDownstreamMcpTools: self-heal 用——返回下游真实工具清单", async () => {
     stubUpstream({ ok: true });
-    server = new AgentrunMcpServer({ resources: DOWNSTREAM });
+    server = new RunloopMcpServer({ resources: DOWNSTREAM });
     await server.start();
 
     const tools = await listDownstreamMcpTools(mcpResource(server.baseUrl), undefined);
     expect(tools.map((t) => t.name)).toContain("function__calc__calc");
   });
 
-  it("auth.mode=agentrun + 元数据/私网/外部域名 URL → SSRF 拦截 isError（R1）", async () => {
-    __setAgentrunHostCheckForTest(true); // 本例校验拦截，恢复生产校验
-    for (const url of ["http://169.254.169.254/mcp", "http://127.0.0.1:9/mcp", "https://evil.example.com/mcp"]) {
-      const res = await callDownstreamMcpTool(mcpResource(url, "agentrun"), "function__calc__calc", {}, CREDS);
-      expect(res.isError, url).toBe(true);
-      expect(res.content[0].text, url).toMatch(/agentrun outbound|not in allowlist|IP literal/);
-    }
-  });
 
   it("opts.timeout：下游挂住（接受连接但不响应）→ 超时 isError，不无界阻塞（R3）", async () => {
     const hang: Server = createServer(() => { /* 永不响应 */ });
@@ -126,12 +109,4 @@ describe("mcp-proxy（聚合代理下游 MCP）", () => {
     expect(JSON.parse(res.content[0].text).error).toMatch(/no mcpConfig.url/);
   });
 
-  it("auth.mode=agentrun 缺 credentials → isError", async () => {
-    const res = await callDownstreamMcpTool(
-      { resourceId: "x", resourceName: "x", resourceType: "MCP", protocol: "mcp", mcpConfig: { url: "https://h/mcp" }, auth: { mode: "agentrun" } } as Resource,
-      "calc", {}, undefined,
-    );
-    expect(res.isError).toBe(true);
-    expect(JSON.parse(res.content[0].text).error).toMatch(/requires credentials/);
-  });
 });

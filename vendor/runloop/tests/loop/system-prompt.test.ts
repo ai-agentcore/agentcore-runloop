@@ -50,17 +50,17 @@ const agentResource = (name: string, description: string): Resource => ({
   description,
   protocol: "ag-ui",
   openapiConfig: {
-    servers: [{ url: "https://acct.agentrun-data.cn-hangzhou.aliyuncs.com" }],
+    servers: [{ url: "https://tools.example.com" }],
     paths: { "/invoke": { post: { operationId: "invoke" } } },
   },
-  auth: { mode: "agentrun" },
+  auth: { mode: "none" },
 } as Resource);
 
 describe("buildSystemPrompt", () => {
   it("uses the built-in Super Agent identity by default", () => {
     const prompt = sp({});
 
-    expect(prompt).toContain("超级 Agent");
+    expect(prompt).toContain("Alibaba Cloud AgentCore");
     expect(prompt).not.toContain("## 用户自定义提示");
   });
 
@@ -107,7 +107,7 @@ describe("buildSystemPrompt", () => {
       expect(prompt).toContain("禁止用纯文本向用户提问");
       expect(prompt).toContain("覆盖下文任何「可用自然语言向用户询问」的说法");
       // 放在最顶部：强制段在「身份与核心约束」之前
-      expect(prompt.indexOf("# 与用户交互（强制")).toBeLessThan(prompt.indexOf("身份与核心约束"));
+      expect(prompt.indexOf("# 与用户交互（强制")).toBeLessThan(prompt.indexOf("Alibaba Cloud AgentCore"));
       // 也在用户自定义提示（含竞争说法）之前
       expect(prompt.indexOf("# 与用户交互（强制")).toBeLessThan(prompt.indexOf("## 用户自定义提示"));
     });
@@ -187,30 +187,12 @@ describe("buildSystemPrompt", () => {
     });
   });
 
-  it("includes environment constraints and install guidance (domestic mirrors, rootless tools)", () => {
-    const prompt = sp({});
 
-    expect(prompt).toContain("## 环境硬约束");
-    expect(prompt).toContain("境外站点均不可达");
-    expect(prompt).toContain("禁止使用");
-    expect(prompt).toContain("uv pip install");
-    expect(prompt).toContain("micromamba install");
-    expect(prompt).toContain("bun add");
-    expect(prompt).toContain("不要编造内容");
-  });
-
-  it("identity override takes highest priority in prompt", () => {
-    const prompt = sp({});
-
-    expect(prompt).toContain("超级 Agent");
-    expect(prompt).toContain("不要自称 Codex");
-    expect(prompt.indexOf("超级 Agent")).toBeLessThan(prompt.indexOf("## 环境硬约束"));
-  });
 
   it("keeps user prompt as additional instructions", () => {
     const prompt = sp({ userPrompt: "回答要简洁" });
 
-    expect(prompt).toContain("超级 Agent");
+    expect(prompt).toContain("Alibaba Cloud AgentCore");
     expect(prompt).toContain("## 用户自定义提示");
     expect(prompt).toContain("回答要简洁");
   });
@@ -218,7 +200,7 @@ describe("buildSystemPrompt", () => {
   it("does not let empty user prompt add a user section", () => {
     const prompt = sp({ userPrompt: "   " });
 
-    expect(prompt).toContain("超级 Agent");
+    expect(prompt).toContain("Alibaba Cloud AgentCore");
     expect(prompt).not.toContain("## 用户自定义提示");
   });
 
@@ -234,14 +216,14 @@ describe("buildSystemPrompt", () => {
           description: "Review code for quality",
           protocol: "openapi",
           openapiConfig: {
-            servers: [{ url: "https://acct-ram.agentrun-data.cn-hangzhou.aliyuncs.com" }],
+            servers: [{ url: "https://tools.example.com" }],
             paths: { "/skills/code-review/download": { get: { operationId: "download" } } },
           },
         },
       ],
     });
 
-    expect(prompt).toContain("# 可用的 AgentRun 工具");
+    expect(prompt).toContain("# 可用的平台工具");
     // 全走 MCP：工具已在列表中、直接按名调用；明确禁止用 shell 模拟/探索（不再用 .tools/agentrun）
     expect(prompt).toContain("直接按名字调用");
     expect(prompt).toContain("禁止");
@@ -266,7 +248,7 @@ describe("buildSystemPrompt", () => {
       description: "Review code for quality",
       protocol: "openapi",
       openapiConfig: {
-        servers: [{ url: "https://acct-ram.agentrun-data.cn-hangzhou.aliyuncs.com" }],
+        servers: [{ url: "https://tools.example.com" }],
         paths: { "/skills/code-review/download": { get: { operationId: "download" } } },
       },
     } as Resource;
@@ -288,7 +270,7 @@ describe("buildSystemPrompt", () => {
           description: "trip planner",
           protocol: "openapi",
           openapiConfig: {
-            servers: [{ url: "https://acct-ram.agentrun-data.cn-hangzhou.aliyuncs.com" }],
+            servers: [{ url: "https://tools.example.com" }],
             paths: { "/skills/fancy-travel/download": { get: { operationId: "download" } } },
           },
         },
@@ -319,7 +301,7 @@ describe("buildSystemPrompt", () => {
       ],
     });
 
-    expect(prompt).toContain("# 可用的 AgentRun 工具");
+    expect(prompt).toContain("# 可用的平台工具");
     // 沙箱工具名 = <净化 resourceName>_<净化 operationId>（sb-123 → sb_123）
     expect(prompt).toContain("### sandbox__sb_123__sandbox_sb_123_exec");
     expect(prompt).toContain("CodeInterpreter");
@@ -352,7 +334,7 @@ describe("buildSystemPrompt", () => {
       ],
     });
 
-    expect(prompt).toContain("# 可用的 AgentRun 工具");
+    expect(prompt).toContain("# 可用的平台工具");
     // KB / Memory 渲染为平台工具（工具名 = <净化 resourceName>_<净化 operationId>）
     expect(prompt).toContain("### kb__kb1__kb1_retrieve");
     expect(prompt).toContain("### memory__mem1__mem1_search");
@@ -430,41 +412,13 @@ describe("buildSystemPrompt", () => {
       }],
     });
 
-    expect(prompt).toContain("超级 Agent");
-    expect(prompt).not.toContain("# 可用的 AgentRun 工具");
+    expect(prompt).toContain("Alibaba Cloud AgentCore");
+    expect(prompt).not.toContain("# 可用的平台工具");
   });
 
-  it("cli 模式用 .tools/agentrun call 指引（mcp 模式不用）", () => {
-    const cli = sp({
-      resources: [{
-        resourceId: "calc",
-        resourceName: "calc",
-        resourceType: "FUNCTIONCALL",
-        description: "Math",
-        protocol: "openapi",
-        openapiConfig: {
-          servers: [{ url: "https://api.example.com" }],
-          paths: {
-            "/calc": {
-              post: {
-                operationId: "calc",
-                description: "Math",
-                requestBody: {
-                  content: { "application/json": { schema: { type: "object", properties: { x: { type: "string" } } } } },
-                },
-              },
-            },
-          },
-        },
-      }],
-      resourceMode: "cli",
-    });
-    expect(cli).toContain(".tools/agentrun call function__calc__calc");
-    expect(cli).not.toContain("直接按名字调用");
-  });
 
   it("每个工具都带一个调用示例（mcp + cli 两模式）", () => {
-    for (const mode of ["mcp", "cli"] as const) {
+    for (const mode of ["mcp"] as const) {
       const prompt = sp({
         resources: [
           fcResource("fc", "f"),
@@ -472,7 +426,7 @@ describe("buildSystemPrompt", () => {
         ],
         resourceMode: mode,
       });
-      const section = prompt.slice(prompt.indexOf("# 可用的 AgentRun 工具"));
+      const section = prompt.slice(prompt.indexOf("# 可用的平台工具"));
       const tools = (section.match(/^### /gm) ?? []).length;
       const examples = (section.match(/^示例：$/gm) ?? []).length;
       expect(tools, `mode=${mode}`).toBe(examples);

@@ -94,10 +94,10 @@ describe("contract v2 — request structure (agent/hitl blocks)", () => {
           resourceType: "AGENT",
           protocol: "ag-ui",
           openapiConfig: {
-            servers: [{ url: "https://acct.agentrun-data.cn-hangzhou.aliyuncs.com" }],
+            servers: [{ url: "https://tools.example.com" }],
             paths: { "/invoke": { post: { operationId: "invoke" } } },
           },
-          auth: { mode: "agentrun" },
+          auth: { mode: "none" },
         },
         // FUNCTIONCALL：protocol=openapi + openapiConfig（每 operation 一个工具）+ 不签名
         {
@@ -124,7 +124,7 @@ describe("contract v2 — request structure (agent/hitl blocks)", () => {
     expect(parsed.resources).toHaveLength(3);
     expect(parsed.resources?.[0].resourceType).toBe("AGENT");
     expect(parsed.resources?.[0].protocol).toBe("ag-ui");
-    expect(parsed.resources?.[0].auth?.mode).toBe("agentrun");
+    expect(parsed.resources?.[0].auth?.mode).toBe("none");
     expect(parsed.resources?.[0].openapiConfig).toBeDefined();
     expect(parsed.resources?.[1].protocol).toBe("openapi");
     expect(parsed.resources?.[2].protocol).toBe("mcp");

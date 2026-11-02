@@ -95,7 +95,7 @@ export function agentResource(
       servers: [{ url: baseUrl }],
       paths: { [path]: { post: { operationId: "invoke" } } },
     },
-    auth: { mode: "agentrun" },
+    auth: { mode: "none" },
   } as Resource;
 }
 

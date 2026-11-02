@@ -26,7 +26,6 @@ export interface ConvertResourcesOptions {
 
 /**
  * 把统一的扁平 Resource[] 转换为 agent CLI 配置。**MCP 聚合模型**：codex **只连**进程内
- * agentrun-mcp 聚合器（由 runner 写进 mcpConfig.mcpServers["agentcore"]），**所有**资源都聚合其后，
  * 按业务处理方式分组到 nonMcpResources：
  * - `protocol === "mcp"` → `mcpServers`（下游 MCP server，聚合器代理；codex 不直连下游）
  * - 其余按溯源 resourceType → `subAgents`(AGENT) / `skills`(SKILL) / `sandboxes`(SANDBOX*) / `tools`(其余 openapi)

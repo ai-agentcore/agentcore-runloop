@@ -22,7 +22,7 @@ async function collectEvents(
 
 function makeRunRequest(overrides: Partial<RunRequest> = {}): RunRequest {
   return {
-    agent: { cli: "echo" },
+    agent: { cli: "codex" },
     events: [
       createEvent(EventType.UserMessage, "s1", {
         content: "hello",
@@ -55,8 +55,8 @@ describe("LoopRunner - workspaces", () => {
     dirs.push(workspacesDir);
 
     const runner = new LoopRunner({
-      allowUnregisteredAgents: true,
-      defaultAdapterType: "cli",
+      agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } },
+      defaultAdapterType: "codex",
       workspacesDir,
     });
 
@@ -72,8 +72,8 @@ describe("LoopRunner - workspaces", () => {
     dirs.push(workspacesDir);
 
     const runner = new LoopRunner({
-      allowUnregisteredAgents: true,
-      defaultAdapterType: "cli",
+      agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } },
+      defaultAdapterType: "codex",
       workspacesDir,
     });
 
@@ -93,8 +93,8 @@ describe("LoopRunner - workspaces", () => {
     dirs.push(workspacesDir);
 
     const runner = new LoopRunner({
-      allowUnregisteredAgents: true,
-      defaultAdapterType: "cli",
+      agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } },
+      defaultAdapterType: "codex",
       workspacesDir,
     });
 
@@ -109,8 +109,8 @@ describe("LoopRunner - workspaces", () => {
     dirs.push(workspacesDir);
 
     const runner = new LoopRunner({
-      allowUnregisteredAgents: true,
-      defaultAdapterType: "cli",
+      agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } },
+      defaultAdapterType: "codex",
       workspacesDir,
     });
 
@@ -127,15 +127,14 @@ describe("LoopRunner - workspaces", () => {
     dirs.push(workspacesDir);
 
     const runner = new LoopRunner({
-      allowUnregisteredAgents: true,
-      defaultAdapterType: "cli",
+      defaultAdapterType: "codex",
       workspacesDir,
-      agentRegistry: { "mock-pwd": { command: MOCK_PWD_PATH } },
+      agentRegistry: { codex: { command: MOCK_PWD_PATH } },
     });
 
     const request = makeRunRequest({
       conversationId: "cwd-test",
-      agent: { cli: "mock-pwd" },
+      agent: { cli: "codex" },
     });
     const events = await collectEvents(runner.run(request));
 
@@ -153,15 +152,14 @@ describe("LoopRunner - workspaces", () => {
     dirs.push(workspacesDir);
 
     const runner = new LoopRunner({
-      allowUnregisteredAgents: true,
-      defaultAdapterType: "cli",
+      defaultAdapterType: "codex",
       workspacesDir,
-      agentRegistry: { "mock-pwd": { command: MOCK_PWD_PATH } },
+      agentRegistry: { codex: { command: MOCK_PWD_PATH } },
     });
 
     const request = makeRunRequest({
       conversationId: "cwd-override",
-      agent: { cli: "mock-pwd", cwd: "/tmp" },
+      agent: { cli: "codex", cwd: "/tmp" },
     });
     const events = await collectEvents(runner.run(request));
 
@@ -175,8 +173,8 @@ describe("LoopRunner - workspaces", () => {
 
   it("does not create workspace when workspacesDir not set", async () => {
     const runner = new LoopRunner({
-      allowUnregisteredAgents: true,
-      defaultAdapterType: "cli",
+      agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } },
+      defaultAdapterType: "codex",
     });
 
     const request = makeRunRequest({ conversationId: "no-ws" });

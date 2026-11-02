@@ -15,7 +15,7 @@ async function collect(gen: AsyncGenerator<RunloopEvent>): Promise<RunloopEvent[
 
 function baseReq(overrides: Partial<RunRequest> = {}): RunRequest {
   return {
-    agent: { cli: "echo" },
+    agent: { cli: "codex" },
     events: [{ type: "user.message", content: "我在哪个城市" } as never],
     model: { provider: "test", model: "m", baseUrl: "http://127.0.0.1:1/v1", apiKey: "k" },
     credentials: { accessKeyId: "ak", accessKeySecret: "sk" },
@@ -25,7 +25,7 @@ function baseReq(overrides: Partial<RunRequest> = {}): RunRequest {
 }
 
 /**
- * Mock adapter：模拟「模型调用客户端工具」——读 config.mcpConfig 的 agentrun-mcp url，用真实 MCP client
+ * Mock adapter：模拟「模型调用客户端工具」——读 config.mcpConfig 的 runloop-mcp url，用真实 MCP client
  * 发 tools/call 调 get_user_location（触发 onToolPending → 置 toolPending + abort），随后 yield 一个事件让
  * runner 的 in-loop abort 屏障命中 tool_pending 分支。覆盖 runner 的 client-tool 注入 + 暂停屏障全链路。
  */
@@ -33,7 +33,7 @@ function makeClientToolAdapter(toolName: string): AgentAdapter {
   return {
     async *run(params: AgentRunParams): AsyncGenerator<RunloopEvent> {
       const url = (params.config as { mcpConfig?: { mcpServers?: Record<string, { url?: string }> } }).mcpConfig?.mcpServers?.agentcore?.url;
-      if (!url) throw new Error("agentrun mcp url missing — client tool 未注入");
+      if (!url) throw new Error("runloop mcp url missing — client tool 未注入");
       const client = new Client({ name: "test-cli", version: "0.0.1" });
       const transport = new StreamableHTTPClientTransport(new URL(url));
       await client.connect(transport);
@@ -47,7 +47,7 @@ function makeClientToolAdapter(toolName: string): AgentAdapter {
 
 describe("LoopRunner — client tools（tool_pending 屏障）", () => {
   it("模型调客户端工具 → run.end{tool_pending}，emit toolcall.start，本轮无 toolresult", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     // 注入 mock adapter（createAdapter 私有，运行时替换）。
     // codex 调用模型侧暴露名（client__ 前缀）；MCP server 外发事件还原成声明名 get_user_location。
     (runner as unknown as { createAdapter: () => AgentAdapter }).createAdapter = () =>
@@ -70,7 +70,7 @@ describe("LoopRunner — client tools（tool_pending 屏障）", () => {
   });
 
   it("声明 clientTools 但模型未调用 → 正常完成（MCP server 仍起、不影响）", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     // adapter 不调任何工具，直接产一条消息并结束。
     (runner as unknown as { createAdapter: () => AgentAdapter }).createAdapter = () => ({
       async *run(params: AgentRunParams): AsyncGenerator<RunloopEvent> {

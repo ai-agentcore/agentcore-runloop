@@ -1,6 +1,5 @@
 import type { PromptTemplate } from "./loader.js";
 
-// AgentCore adaptation: do not inherit AgentRun-specific identity, network,
 // package-manager, or output restrictions from the original deployment.
 export const superAgentPrompt: PromptTemplate = {
   name: "agentcore-agent",

@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
 import { callSubAgent, resolveSubAgentTimeouts } from "@/sidecar/sub-agent-caller.js";
-import { __setSsrfLookupForTest, __setAgentrunHostCheckForTest } from "@/sidecar/ssrf.js";
+import { __setSsrfLookupForTest } from "@/sidecar/ssrf.js";
 import type { RunloopEvent } from "@/types/events.js";
 import type { Resource } from "@/types/resources.js";
 
 // agentResource 用 auth.mode=agentrun + 本地 mock（127.0.0.1）端点验证签名/SSE 管路；agentrun 域名白名单
 // （R1）会拦 loopback，故管路类用例临时关校验（不削弱生产），SSRF 拦截行为另由专门用例覆盖。
-beforeEach(() => __setAgentrunHostCheckForTest(false));
-afterEach(() => __setAgentrunHostCheckForTest(true));
+
+
 
 function startMockAgent(handler: (req: any, res: any) => void): Promise<{ port: number; server: Server }> {
   return new Promise((resolve) => {
@@ -44,7 +44,7 @@ function agentResource(opts: {
     openapiConfig,
     ...(headers ? { headers } : {}),
     ...(serverManagesHistory !== undefined ? { serverManagesHistory } : {}),
-    auth: { mode: "agentrun" },
+    auth: { mode: "none" },
   } as Resource;
 }
 
@@ -560,7 +560,7 @@ describe("callSubAgent", () => {
     const agent = {
       resourceId: "r", resourceName: "bot", resourceType: "AGENT", protocol: "a2a",
       openapiConfig: { openapi: "3.0.0", servers: [{ url: `http://127.0.0.1:${p}` }], paths: { "/.well-known/agent-card.json": { post: { operationId: "invoke" } } } },
-      auth: { mode: "agentrun" },
+      auth: { mode: "none" },
     } as Resource;
     const result = await callSubAgent(agent, "hi", creds);
     expect(cardHit).toBe(true);
@@ -568,34 +568,6 @@ describe("callSubAgent", () => {
     expect(result).toBe("OK");
   });
 
-  it("a2a 平台托管（agentrun）：card 内 localhost url 被忽略，message/stream 打 cardUrl 的 invocations 基址（L-052）", async () => {
-    let streamPath: string | undefined;
-    const { port, server } = await startMockAgent((req, res) => {
-      if (req.url?.includes("agent-card.json")) {
-        res.writeHead(200, { "content-type": "application/json" });
-        // 平台托管 a2a 在容器内 listen localhost、AgentCard.url 也写 localhost（不可外部访问）。
-        res.end(JSON.stringify({ name: "bot", url: "http://localhost:9000", capabilities: { streaming: true } }));
-        return;
-      }
-      streamPath = req.url;
-      res.writeHead(200, { "content-type": "text/event-stream" });
-      res.write(sseResponse([
-        JSON.stringify({ jsonrpc: "2.0", id: "1", result: { kind: "artifact-update", artifact: { parts: [{ kind: "text", text: "OK" }] } } }),
-        JSON.stringify({ jsonrpc: "2.0", id: "1", result: { kind: "status-update", status: { state: "completed" }, final: true } }),
-      ]));
-      res.end();
-    });
-    mockServer = server;
-    const agent = {
-      resourceId: "r", resourceName: "bot", resourceType: "AGENT", protocol: "a2a",
-      openapiConfig: { openapi: "3.0.0", servers: [{ url: `http://127.0.0.1:${port}` }], paths: { "/agent-runtimes/bot/endpoints/Default/invocations/.well-known/agent-card.json": { post: { operationId: "invoke" } } } },
-      auth: { mode: "agentrun" },
-    } as Resource;
-    const result = await callSubAgent(agent, "hi", creds);
-    // 忽略 card 内 localhost:9000，message/stream 打到 cardUrl 去掉 well-known 的 invocations 基址。
-    expect(streamPath).toBe("/agent-runtimes/bot/endpoints/Default/invocations");
-    expect(result).toBe("OK");
-  });
 
   it("a2a：card 解析出的 endpoint 落私网 → SSRF 二次拦截（防 card 重定向绕过）", async () => {
     __setSsrfLookupForTest(async (host: string) => (host === "127.0.0.1" ? [{ address: "203.0.113.1" }] : [{ address: "10.0.0.5" }]));
@@ -729,25 +701,6 @@ describe("callSubAgent", () => {
     expect(result).toBe("chunk1chunk2");
   });
 
-  it("sends signed request with correct headers", async () => {
-    let receivedHeaders: Record<string, string> = {};
-    const { port, server } = await startMockAgent((req, res) => {
-      receivedHeaders = req.headers;
-      res.writeHead(200, { "content-type": "text/event-stream" });
-      res.write(sseResponse([JSON.stringify({ type: "RUN_FINISHED" })]));
-      res.end();
-    });
-    mockServer = server;
-
-    const agent = agentResource({ resourceName: "test", serverUrl: `http://127.0.0.1:${port}` });
-    await callSubAgent(agent, "test", creds);
-
-    expect(receivedHeaders["agentrun-authorization"]).toMatch(/AGENTRUN4-HMAC-SHA256/);
-    // 不再发 x-acs-parent-id（不在权威签名器里，多签会致 403）；POST 带 body 故签 content-type。
-    expect(receivedHeaders["x-acs-parent-id"]).toBeUndefined();
-    expect(receivedHeaders["content-type"]).toBe("application/json");
-    expect(receivedHeaders["accept"]).toBe("text/event-stream");
-  });
 });
 
 describe("callSubAgent — 分支补全", () => {
@@ -870,14 +823,6 @@ describe("callSubAgent — 分支补全", () => {
     expect(JSON.parse(await callSubAgent(agent, "t", creds)).error).toMatch(/no url/);
   });
 
-  it("auth.mode=agentrun + 元数据/私网/外部域名端点 → SSRF 拦截，不发请求（R1）", async () => {
-    __setAgentrunHostCheckForTest(true); // 本例校验拦截，恢复生产校验（全局 beforeEach 关了它）
-    for (const url of ["http://169.254.169.254/invoke", "http://10.0.0.5/invoke", "https://evil.example.com/invoke"]) {
-      const agent = agentResource({ resourceName: "x", serverUrl: url }); // agentResource 固定 mode=agentrun
-      const r = JSON.parse(await callSubAgent(agent, "task", creds));
-      expect(r.error, url).toMatch(/blocked sub-agent target/);
-    }
-  });
 
   it("SSE 含空 data 行 → 跳过、仍解析有效事件（156）", async () => {
     const { port, server } = await startMockAgent((req, res) => {

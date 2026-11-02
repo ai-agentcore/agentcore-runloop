@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
-import { __setAgentrunHostCheckForTest } from "@/sidecar/ssrf.js";
 import { translateChildEvent } from "@/sidecar/event-translator.js";
 import { callSubAgent } from "@/sidecar/sub-agent-caller.js";
 import { EventType } from "@/types/events.js";
@@ -40,7 +39,7 @@ function agUiAgent(serverUrl: string): Resource {
       servers: [{ url: serverUrl }],
       paths: { "/invoke": { post: { operationId: "invoke" } } },
     },
-    auth: { mode: "agentrun" },
+    auth: { mode: "none" },
   } as Resource;
 }
 
@@ -48,10 +47,10 @@ const creds = { accessKeyId: "ak", accessKeySecret: "sk", region: "cn-hangzhou",
 
 describe("HITL × ag-ui 子 agent —— 现状基线", () => {
   let mockServer: Server | null = null;
-  beforeEach(() => __setAgentrunHostCheckForTest(false)); // 子 agent 连本地 mock；R1 拦截另由专门用例覆盖
+   // 子 agent 连本地 mock；R1 拦截另由专门用例覆盖
   afterEach(() => {
     if (mockServer) { mockServer.close(); mockServer = null; }
-    __setAgentrunHostCheckForTest(true);
+
   });
 
   // ① 向上透传：子 agent 的 HITL 升级为父级 suspend，沿 parentToolCallId 向上（现状=已支持）

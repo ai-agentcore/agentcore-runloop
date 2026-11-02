@@ -36,7 +36,7 @@ const RESOURCES: NonMcpResources = {
       resourceId: "sk1", resourceName: "review", resourceType: "SKILL", protocol: "openapi", description: "Code review",
       openapiConfig: {
         openapi: "3.0.0",
-        servers: [{ url: "https://acct-ram.agentrun-data.cn-hangzhou.aliyuncs.com" }],
+        servers: [{ url: "https://tools.example.com" }],
         paths: { "/skills/review/download": { get: { operationId: "download" } } },
       },
     },
@@ -102,50 +102,7 @@ describe("SidecarServer", () => {
     expect(body).toEqual({ status: "ok" });
   });
 
-  it("remoteExecSandbox 注入 → bash 工具路由到隔离沙箱数据面（不在本地执行）", async () => {
-    const fetchSpy = stubUpstreamFetch({ result: { exitCode: 0, stdout: "remote-ok", stderr: "" } });
-    const sb = {
-      resourceId: "sbx-7", resourceName: "py", resourceType: "SANDBOX", protocol: "openapi",
-      openapiConfig: { servers: [{ url: "https://1234567890123456.agentrun-data.cn-hangzhou.aliyuncs.com" }] },
-    };
-    server = new SidecarServer({
-      resources: EMPTY,
-      credentials: { accessKeyId: "ak", accessKeySecret: "sk", accountId: "1234567890123456", region: "cn-hangzhou" },
-      remoteExecSandbox: sb as never,
-    });
-    await server.start();
 
-    const r = await server.gatedExecute("bash", { command: "echo hi" });
-    expect(JSON.parse(r.content[0].text)).toMatchObject({ stdout: "remote-ok", exit_code: 0 });
-    // 命令打到了沙箱数据面 /processes/cmd（远端），而非本地 bash。
-    const cmdCall = fetchSpy.mock.calls.find((c) => String(c[0]).includes("/sandboxes/sbx-7/processes/cmd"));
-    expect(cmdCall).toBeTruthy();
-  });
-
-  it("initRemoteSandbox（有 Sandbox + SKILL）→ 在沙箱内 curl 下载解包 skill（Change B / option b）", async () => {
-    const fetchSpy = stubUpstreamFetch({ result: { exitCode: 0, stdout: "", stderr: "" } });
-    const sb = {
-      resourceId: "sbx-9", resourceName: "py", resourceType: "SANDBOX", protocol: "openapi",
-      openapiConfig: { servers: [{ url: "https://1234567890123456.agentrun-data.cn-hangzhou.aliyuncs.com" }] },
-    };
-    server = new SidecarServer({
-      resources: { ...EMPTY, skills: RESOURCES.skills }, // 含 SKILL "review"（download operation）
-      credentials: { accessKeyId: "ak", accessKeySecret: "sk", accountId: "1234567890123456", region: "cn-hangzhou" },
-      remoteExecSandbox: sb as never,
-    });
-    await server.start();
-
-    await server.initRemoteSandbox({ localWorkspaceDir: "/tmp/ignored" });
-    // 经沙箱 /processes/cmd 跑 curl 下载脚本（不经本地盘、不经数据面 writeFile）。
-    const cmdCall = fetchSpy.mock.calls.find((c) => String(c[0]).includes("/sandboxes/sbx-9/processes/cmd"));
-    expect(cmdCall).toBeTruthy();
-    const cmd = JSON.parse((cmdCall![1] as { body: string }).body).command as string;
-    expect(cmd).toContain("curl");
-    expect(cmd).toContain(".agents/skills/review");
-    expect(cmd).toContain("Agentrun-Authorization:");
-    // 不经数据面 writeFile（POST /files）落盘——option b 是沙箱内直发下载。
-    expect(fetchSpy.mock.calls.some((c) => String(c[0]).endsWith("/files"))).toBe(false);
-  });
 
   it("listTools：get_skill 仅零执行态（无 execShell）注入；有 execShell 不注入（与 buildExtraTools 一致，Change A）", () => {
     // 无 execShell + 有 SKILL → 注入 get_skill（读 skill 正文的唯一通道）。

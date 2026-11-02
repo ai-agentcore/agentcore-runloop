@@ -17,7 +17,6 @@ export interface ExtraToolsGate {
 }
 
 /**
- * 计算 agentrun-mcp server 要额外挂载的「非资源工具」（与平台资源工具 buildToolDescriptors 正交）：
  * - 辅轨 HITL ask 原语 `request_user_input` —— 仅 hitlEnabled。
  * - 内置执行/文件工具 `bash`/`read_file`/... —— 仅 execToolsEnabled（**无 shell / 零执行态下整组不注入**）。
  * - skill 读取工具 `get_skill` —— 仅 `hasSkills && !execToolsEnabled`：**只在无 shell（零执行态）注入**，

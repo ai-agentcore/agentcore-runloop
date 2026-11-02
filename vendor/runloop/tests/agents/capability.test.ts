@@ -9,7 +9,6 @@
  * 机制①（见 multi-protocol-agent.cjs 注释）；机制① 需 runloop 转发 client tools，属另一通道，暂不在此矩阵。
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { __setAgentrunHostCheckForTest } from "@/sidecar/ssrf.js";
 import { startAgent, agentResource, delegate, type AgentHandle } from "./harness.js";
 
 let agent: AgentHandle;
@@ -17,12 +16,12 @@ let agent: AgentHandle;
 beforeAll(async () => {
   // auth.mode=agentrun 管路类用例：关掉 agentrun 域名白名单以连 127.0.0.1（沿用 sub-agent-caller.test 约定，
   // 不削弱生产；SSRF 拦截行为另由专门用例覆盖）。
-  __setAgentrunHostCheckForTest(false);
+
   agent = await startAgent();
 }, 20_000);
 
 afterAll(async () => {
-  __setAgentrunHostCheckForTest(true);
+
   await agent?.stop();
 });
 

@@ -11,7 +11,7 @@ async function collect(gen: AsyncGenerator<RunloopEvent>): Promise<RunloopEvent[
 
 function baseReq(overrides: Partial<RunRequest> = {}): RunRequest {
   return {
-    agent: { cli: "echo" },
+    agent: { cli: "codex" },
     events: [{ type: "user.message", content: "hi" } as never],
     model: { provider: "test", model: "m", baseUrl: "http://127.0.0.1:1/v1", apiKey: "k" },
     credentials: { accessKeyId: "ak", accessKeySecret: "sk" },
@@ -21,7 +21,7 @@ function baseReq(overrides: Partial<RunRequest> = {}): RunRequest {
 
 describe("LoopRunner — run.end pairing (L-033)", () => {
   it("error path emits run.error then run.end{error} as the final event", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     // missing model.baseUrl/apiKey → runner throws → run.error + run.end{error}
     const req = baseReq({ model: { provider: "test", model: "m" } as never });
     const events = await collect(runner.run(req));
@@ -35,7 +35,7 @@ describe("LoopRunner — run.end pairing (L-033)", () => {
   });
 
   it("completed run ends with run.end{completed}", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const events = await collect(runner.run(baseReq()));
     const end = events[events.length - 1] as RunloopEvent & { reason?: string };
     expect(end.type).toBe(EventType.RunEnd);
@@ -45,7 +45,7 @@ describe("LoopRunner — run.end pairing (L-033)", () => {
 
 describe("LoopRunner — HITL execute-on-resume (AD-026)", () => {
   it("aux-track resolve approve injects toolresult before the run continues", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const req = baseReq({
       events: [
         { type: "user.message", content: "do it" },
@@ -65,7 +65,7 @@ describe("LoopRunner — HITL execute-on-resume (AD-026)", () => {
   });
 
   it("unresolved suspend (no resolve) → run.error{HITL_UNRESOLVED} + run.end{error}", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const req = baseReq({
       events: [
         { type: "toolcall.suspend", toolCallId: "tc-9", toolName: "db_drop", reason: "static_rule",
@@ -82,7 +82,7 @@ describe("LoopRunner — HITL execute-on-resume (AD-026)", () => {
 
   // NL 通道（AD-026 增补）端到端经 LoopRunner：reask 分支（跳过 codex，重问 + hitl_pending）
   it("NL 通道：回复不匹配 → 重问消息 + run.end{hitl_pending}，不跑 codex/不报错", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const req = baseReq({
       events: [
         { type: "user.message", content: "do it" },
@@ -106,7 +106,7 @@ describe("LoopRunner — HITL execute-on-resume (AD-026)", () => {
 
   // NL 通道经 LoopRunner：肯定词命中 → 合成 resolve、注入 toolresult、run 继续（非 reask、非 error）
   it("NL 通道：肯定词命中 → 注入 toolresult 并继续（辅轨 confirmed_by_user）", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const req = baseReq({
       events: [
         { type: "user.message", content: "do it" },

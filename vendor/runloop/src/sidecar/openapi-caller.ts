@@ -1,10 +1,8 @@
 import type { Credentials, Resource } from "../types/resources.js";
 import type { OpenapiOperation } from "../mcp/openapi.js";
 import { joinUrl } from "../mcp/openapi.js";
-import { buildSignedRequest } from "./agentrun-sign.js";
-import { assertOutboundAllowed, assertAgentrunHostAllowed, SsrfBlockedError } from "./ssrf.js";
+import { assertOutboundAllowed, SsrfBlockedError } from "./ssrf.js";
 import { logResourceRequest, logResourceResponse, type ResourceCallLogger } from "./resource-log.js";
-import { rewriteToInternalEndpoint } from "./internal-endpoint.js";
 import { envPositiveInt } from "../util/env.js";
 
 /** GET/DELETE/HEAD 把 args 放 query，其余放 JSON body。 */
@@ -14,11 +12,9 @@ const QUERY_METHODS = new Set(["get", "delete", "head"]);
 const DEFAULT_OPENAPI_TIMEOUT_MS = 600_000; // 10min
 
 export interface OpenapiCallOptions {
-  /** 顶层 request.headers（全局，铺底；与资源级 resource.headers 合并，资源级优先；runloop 签名 header 最高优先）。 */
+  /** 全局与资源级 headers 合并，资源级优先。 */
   globalHeaders?: Record<string, string>;
   timeout?: number;
-  /** 覆盖 operation 的 serverUrl（SANDBOX_TEMPLATE 懒创建出的实例 endpoint 绑这里）。 */
-  serverUrlOverride?: string;
   /** HITL execute-on-resume 的下游幂等键（H5）：带 x-idempotency-key 头，让支持的下游去重（exactly-once）。 */
   idempotencyKey?: string;
   /** 资源调用日志器（记录 openapi 工具的出站请求/响应内容，便于排查上游错误）。 */
@@ -31,8 +27,7 @@ export interface OpenapiCallOptions {
  * 调用一个 openapi 工具 operation —— 把 echo 换成真实 HTTP：
  * - URL = serverUrl + path（serverUrl 为空 → 无端点，返回错误）
  * - method 来自 operation；GET/DELETE/HEAD → args 进 query，其余 → JSON body
- * - 鉴权按 `resource.auth.mode`：`agentrun` 走 `buildSignedRequest`（AGENTRUN4-HMAC-SHA256）；`none` 只透传 headers
- * - header 优先级：globalHeaders 铺底 → resource.headers → runloop 签名 header 最高优先
+ * - header 优先级：globalHeaders 铺底 → resource.headers
  *
  * 失败（无端点 / 缺 credentials / HTTP 非 2xx / 超时）返回 `{"error":...}` JSON 字符串，由调用方标 isError。
  */
@@ -43,7 +38,7 @@ export async function callOpenapiTool(
   credentials: Credentials | undefined,
   opts?: OpenapiCallOptions,
 ): Promise<string> {
-  let url = joinUrl(opts?.serverUrlOverride || op.serverUrl, op.path);
+  let url = joinUrl(op.serverUrl, op.path);
   if (!url) {
     return JSON.stringify({ error: "openapi tool has no endpoint (empty serverUrl and path)" });
   }
@@ -67,37 +62,13 @@ export async function callOpenapiTool(
     ...(opts?.idempotencyKey ? { "x-idempotency-key": opts.idempotencyKey } : {}),
   };
 
-  const mode = resource.auth?.mode ?? "none";
-  let finalUrl = url;
-  let headers: Record<string, string> = { "content-type": "application/json", ...baseHeaders };
-
-  // SSRF 守卫（H1/R1）：所有请求体可控 URL 都校验，不再把 auth.mode 当信任边界。
-  // 非 agentrun → IP 级 assertOutboundAllowed（私网/环回/元数据拦截）；agentrun → 域名白名单
-  // （DNS 前判定，VPC dns-mapping 安全；挡掉 169.254/127/RFC1918 IP 直连与任意外部域名）。
+  const finalUrl = url;
+  const headers = { "content-type": "application/json", ...baseHeaders };
   try {
-    if (mode !== "agentrun") await assertOutboundAllowed(url);
-    else assertAgentrunHostAllowed(url);
+    await assertOutboundAllowed(url);
   } catch (err) {
     if (err instanceof SsrfBlockedError) return JSON.stringify({ error: `blocked outbound target: ${err.message}` });
     throw err;
-  }
-
-  if (mode === "agentrun") {
-    if (!credentials) {
-      return JSON.stringify({ error: "auth.mode=agentrun requires credentials" });
-    }
-    // 有 body（非 query 方法）才签 content-type；GET/DELETE/HEAD 无 body → 不签（对齐权威签名器）。
-    const signed = buildSignedRequest(method, url, body, credentials, body ? "application/json" : undefined);
-    finalUrl = signed.url;
-    // rewrite 后的 URL 仍须落在白名单内（防签名器引入非白名单 host）。
-    try {
-      assertAgentrunHostAllowed(finalUrl);
-    } catch (err) {
-      if (err instanceof SsrfBlockedError) return JSON.stringify({ error: `blocked outbound target: ${err.message}` });
-      throw err;
-    }
-    // 资源/全局 header 铺底 → runloop 签名 header 最高优先（覆盖之）
-    headers = { ...baseHeaders, ...signed.headers };
   }
 
   const controller = new AbortController();
@@ -109,7 +80,7 @@ export async function callOpenapiTool(
   logResourceRequest(opts?.log, { target: "openapi", toolName: opts?.toolName, method, url: finalUrl, body: useQuery ? undefined : body });
   const startedAt = Date.now();
   try {
-    const resp = await fetch(rewriteToInternalEndpoint(finalUrl), {
+    const resp = await fetch(finalUrl, {
       method,
       headers,
       body: useQuery ? undefined : body,

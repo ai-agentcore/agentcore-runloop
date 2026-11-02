@@ -1,6 +1,8 @@
-# AgentCore Runloop
+# 配置与实现参考
 
-`agentcore-runloop` 以 Node.js Harness 和 Codex 等 Agent CLI 作为执行引擎，对外提供 Runloop HTTP/SSE 与 AG-UI 接口。生产通过 `alibabacloud-agentcore-sdk` Node SDK 访问 AgentCore 模型、MCP 和 Skill。
+[返回首页](../README.md) · [在 AgentCore 上使用](agentcore-guide.md)
+
+本文保留高级配置与内部实现细节；首次部署请先阅读使用教程。
 
 ## 架构
 
@@ -118,7 +120,7 @@ flowchart TB
 
 ## 对外接口
 
-默认监听 `0.0.0.0:8080`：
+镜像默认监听 `0.0.0.0:8080`；本地源码默认监听 `127.0.0.1:8080`：
 
 | 方法与路径 | 用途 |
 |---|---|
@@ -218,7 +220,7 @@ npm run smoke:sandbox
 
 ## 环境变量
 
-Agent Sandbox 的总体架构、生命周期、安全数据流和使用案例见 [docs/sandbox/README.md](docs/sandbox/README.md)。
+Agent Sandbox 的总体架构、生命周期、安全数据流和使用案例见 [docs/sandbox/README.md](sandbox/README.md)。
 
 ### 模型与 AgentCore 资源
 
@@ -274,7 +276,7 @@ Linux 容器须允许 Bubblewrap 所需 namespace 操作。无需动态重挂 OS
 | `AGENTCORE_WORKDIR` | local 模式为 `/tmp/agentcore-user-work` | Agent 容器侧工作存储绝对根。`local` 模式下每次请求使用 `<root>/<uid>/<conversationId>` 作为 cwd；sandbox 模式不使用该目录执行命令，也不回退本地。 |
 | `AGENTCORE_ARTIFACT_ROOT` | 未设置 | OSS 挂载内的交付根，必须与工作区不同。启用后注册 `publish_artifact`，将最终文件发布到 `<root>/<uid>/<conversationId>`；未配置工作区时自动使用临时目录。 |
 | `AGENTCORE_CODEX_HOME_ROOT` | `<服务 cwd>/.agentcore-codex` | local 模式的 Codex 配置与辅助入口根，须位于系统临时目录和用户业务目录之外；每次运行创建独立子目录并清理。 |
-| `AGENTCORE_AGENT_CLI` | `codex` | Agent 执行引擎。镜像安装 Codex `0.155.0`。 |
+| `AGENTCORE_AGENT_CLI` | `codex` | 仅支持 `codex`。镜像安装 Codex `0.155.0`。 |
 | `AGENTCORE_RUN_TIMEOUT_MS` | `21600000` | 单次任务最大执行时间，单位毫秒（默认 6 小时），也是模型 SDK 请求超时上限。 |
 | `AGENTCORE_ATTACHMENT_DOWNLOAD_TIMEOUT_MS` | `1800000` | 单个已确认附件物化到会话工作目录的下载超时，单位毫秒（默认 30 分钟）；无附件时不触发。 |
 
@@ -386,7 +388,7 @@ Codex 使用名为 `agentcore` 的 Runloop MCP 聚合器，命令工具全名为
 
 Codex 通过 Runloop MCP 聚合器调用工具时，执行入口在通过执行前检查后、进入工具函数前发送 `toolcall.start` 和参数完整事件 `toolcall.end`；函数返回或失败时发送相同 `toolCallId` 的 `toolresult.end`。文件检索（如 `grep`）、文件读写、命令、图片和远端 MCP/OpenAPI 调用均走此路径。事件通过 Runner 注入通道立即进入 SSE / AG-UI，前端可在执行期间显示正在运行；服务端日志中的 `tool call` 不替代这些事件。`toolcall.end` 仅表示参数已完整，执行结束以 `toolresult.end` 为准。
 
-Codex 适配器按聚合器实际工具名抑制重复卡片。未由服务端负责的 MCP 调用消费 `item.started/updated/completed`，开始与参数只发送一次，并保留只收到完成事件时的兼容处理。客户端工具、Agent 委派和 HITL 审批沿用自己的生命周期；审批后执行由 resume 流程发送事件，避免重复上报。其他 CLI 适配器只有明确支持服务端事件去重后才启用这条路径。实现见 [工具生命周期](vendor/runloop/src/mcp/tool-events.ts)、[执行分发](vendor/runloop/src/mcp/tool-registry.ts) 和 [Codex 适配](vendor/runloop/src/acp/codex-adapter.ts)。
+Codex 适配器按聚合器实际工具名抑制重复卡片。未由服务端负责的 MCP 调用消费 `item.started/updated/completed`，开始与参数只发送一次，并保留只收到完成事件时的兼容处理。客户端工具、Agent 委派和 HITL 审批沿用自己的生命周期；审批后执行由 resume 流程发送事件，避免重复上报。实现见 [工具生命周期](../vendor/runloop/src/mcp/tool-events.ts)、[执行分发](../vendor/runloop/src/mcp/tool-registry.ts) 和 [Codex 适配](../vendor/runloop/src/acp/codex-adapter.ts)。
 
 模型、MCP、Skill、`/initialize` 或请求准备失败会记录结构化安全诊断，包括阶段、资源名、异常类型、SDK code、HTTP status 与 requestId；不会记录异常 message/stack、SDK 响应正文、Token 或凭证。MCP 诊断进一步通过 `resourceWarnings[].diagnostics.stage` 和安全日志的 `operation` 区分 `resolve`、`connect` 与 `list_tools`。单个 MCP/Skill 失败时，`/initialize` 仍返回 HTTP 200，同时返回 `resourceStatus: degraded` 和 `resourceWarnings[].diagnostics`。
 

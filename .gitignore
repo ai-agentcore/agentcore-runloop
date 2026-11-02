@@ -43,6 +43,9 @@ capture.pcap
 # Local verification records are not part of the clean source distribution
 /verification/
 /VERIFICATION.md
+/CLEAN_COPY_NOTES.md
+/docs/pure-sandbox-verification.md
+/docs/security-review-*.md
 
 # Ephemeral Codex sandbox config (may contain internal authentication)
 .agentcore-codex/

@@ -20,6 +20,6 @@
   <path d="M1069 682H361" class="arr green"/><text x="613" y="673" class="sm">命令结果 / 文件内容（结构保持）</text>
   <path d="M361 718H592" class="arr"/><text x="410" y="709" class="n">10. finally: release()</text>
   <rect x="531" y="735" width="122" height="42" rx="8" fill="#fff7ed" stroke="#fb923c"/><text x="543" y="760" class="n">lease=idle</text>
-  <rect x="55" y="735" width="380" height="42" rx="9" fill="#fef2f2" stroke="#fca5a5"/><text x="72" y="753" class="n">失败策略：获取超时 + WORKDIR → 工具本地回退</text><text x="72" y="770" class="sm">其它错误返回工具诊断；前置操作失败返回 503</text>
+  <rect x="55" y="735" width="380" height="42" rx="9" fill="#fef2f2" stroke="#fca5a5"/><text x="72" y="753" class="n">失败策略：获取失败或超时 → 安全错误</text><text x="72" y="770" class="sm">其它错误返回工具诊断；前置操作失败返回 503</text>
   <text x="44" y="804" class="sm">沙箱按需创建且不是每轮销毁：同一会话后续工具调用复用，短时间内不重复健康检查和续期。</text>
 </svg>

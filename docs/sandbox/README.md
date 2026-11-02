@@ -20,7 +20,7 @@
 - Harness 优先使用部署 Secret 注入的 `AGENTCORE_SANDBOX_API_KEY`；未配置时才使用 AgentCore 工作负载身份按凭证资源名动态获取 Key。真实 Key 不进入请求、模型上下文或日志。
 - 文件与 Shell MCP 使用远程执行后端，路径被限制在 `AGENTCORE_SANDBOX_ROOT`。
 - 托管 Skill 从 SDK 系统级缓存按不可变版本批量导入当前会话沙箱，完成后写入摘要标记；已校验附件被物化到同一执行根，最终文件通过 `publish_artifact` 发布到 OSS 交付根。
-- 首次沙箱操作发生 SDK 请求超时且配置了 `AGENTCORE_WORKDIR` 时，尚未产生沙箱状态的执行后端切换到 Agent 容器会话目录；非超时配置/凭证/配额错误和同会话繁忙不回退。
+- 沙箱获取失败或超时返回安全错误，始终不回退本地执行；附件等必须在 Agent 启动前完成的操作失败时，请求返回 503。
 - 获取失败记录安全的 `sandbox_acquire_failed` 日志，包含阶段、异常类型及 SDK 可用的 code/status/requestId，不记录异常正文、stack、响应正文或凭证。
 
 ## 生命周期
@@ -31,7 +31,7 @@
 
 ![AgentCore Runloop 按需沙箱完整执行流程](./execution-flow.svg)
 
-这张图覆盖纯对话旁路、附件前置准备、首次工具惰性创建、凭证动态获取、同会话快速复用、Skill 同步、超时本地回退以及安全错误返回。
+这张图覆盖纯对话旁路、附件前置准备、首次工具惰性创建、凭证动态获取、同会话快速复用、Skill 同步以及安全错误返回。
 
 当前绑定和互斥租约保存在单进程内存中，适用于单副本或上游按 `uid + conversationId` 粘性路由。多副本需要将绑定、租约 owner/expiry 与回收状态迁移到支持 CAS/TTL 的共享存储，并使用 SDK `connect()` 恢复沙箱。
 
@@ -69,4 +69,4 @@ AGENTCORE_SANDBOX_ALLOW_INTERNET=false
 - 杭州默认 Endpoint 与默认域名可用，无需自定义域名。
 - 沙箱创建、健康检查、Shell 执行、SDK 文件读写、清理与主动回收均通过。
 - 内置模板具备 Node、Git、Python；沙箱侧无需 Codex。
-- 自动化测试覆盖惰性创建、同会话复用、Skill 分片批量导入与失败标记、安全诊断和超时本地回退。
+- 自动化测试覆盖惰性创建、同会话复用、Skill 分片批量导入与失败标记、安全诊断和超时拒绝执行。

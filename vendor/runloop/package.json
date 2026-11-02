@@ -1,23 +1,13 @@
 {
   "name": "runloop",
   "version": "0.1.0",
-  "description": "Agent loop runtime — drives agent CLIs via ACP with unified event protocol",
+  "description": "Codex execution Harness on Alibaba Cloud AgentCore",
   "type": "module",
   "scripts": {
-    "dev": "bash scripts/dev.sh",
-    "dev:stop": "bash scripts/dev-stop.sh",
-    "dev:log": "tail -f logs/server.log",
-    "dev:fg": "tsx src/server/index.ts",
-    "build": "vite build",
     "test": "vitest run --pool=forks --maxWorkers=1",
-    "e2e": "vitest run --config vitest.e2e.config.ts",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "cli": "tsx src/cli/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@alicloud/agentrun20250910": "^5.9.1",
     "@hono/node-server": "^1.14.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.4.2",

@@ -16,7 +16,7 @@ async function collectEvents(
 
 function makeRunRequest(overrides: Partial<RunRequest> = {}): RunRequest {
   return {
-    agent: { cli: "echo" },
+    agent: { cli: "codex" },
     events: [
       createEvent(EventType.UserMessage, "s1", {
         content: "hello",
@@ -36,7 +36,7 @@ function makeRunRequest(overrides: Partial<RunRequest> = {}): RunRequest {
 
 describe("LoopRunner", () => {
   it("produces run.start and run.end events", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const request = makeRunRequest();
 
     const events = await collectEvents(runner.run(request));
@@ -45,13 +45,13 @@ describe("LoopRunner", () => {
     const end = events.find((e) => e.type === EventType.RunEnd);
 
     expect(start).toBeDefined();
-    expect((start as any)?.agentCli).toBe("echo");
+    expect((start as any)?.agentCli).toBe("codex");
     expect(end).toBeDefined();
     expect((end as any)?.reason).toBe("completed");
   });
 
   it("每条出站事件都带 runId（不只是 run.start/run.end）", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const events = await collectEvents(runner.run(makeRunRequest()));
 
     const start = events.find((e) => e.type === EventType.RunStart);
@@ -67,7 +67,7 @@ describe("LoopRunner", () => {
   });
 
   it("出站 message.* 事件端到端带聚合 messageId（同一条 message 共享）", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const events = await collectEvents(runner.run(makeRunRequest()));
 
     const msgEvents = events.filter((e) => e.type.startsWith("message.")) as Array<
@@ -84,7 +84,7 @@ describe("LoopRunner", () => {
   });
 
   it("auto-generates run id when not provided", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const events = await collectEvents(runner.run(makeRunRequest()));
 
     const start = events.find((e) => e.type === EventType.RunStart);
@@ -93,7 +93,7 @@ describe("LoopRunner", () => {
   });
 
   it("uses provided conversation id", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const events = await collectEvents(
       runner.run(makeRunRequest({ conversationId: "my-session" }))
     );
@@ -103,7 +103,7 @@ describe("LoopRunner", () => {
   });
 
   it("treats attachments as already-materialized agent inputs without storage credentials", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const request = makeRunRequest({
       conversationId: "attachment-session",
       credentials: undefined,
@@ -127,7 +127,7 @@ describe("LoopRunner", () => {
   });
 
   it("handles agent CLI errors gracefully", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const events = await collectEvents(
       runner.run(makeRunRequest({ agent: { cli: "nonexistent_agent_99999" } }))
     );
@@ -140,9 +140,9 @@ describe("LoopRunner", () => {
   });
 
   it("can interrupt a running run", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
 
-    const request = makeRunRequest({ agent: { cli: "sleep" } });
+    const request = makeRunRequest({ agent: { cli: "codex" } });
     request.events = [
       createEvent(EventType.UserMessage, "s1", {
         content: "10",
@@ -172,7 +172,7 @@ describe("LoopRunner", () => {
   });
 
   it("marks run as completed after successful run", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const request = makeRunRequest({ conversationId: "tracked" });
 
     await collectEvents(runner.run(request));
@@ -182,14 +182,14 @@ describe("LoopRunner", () => {
   });
 
   it("passes resources to adapter", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const request = makeRunRequest({
       resources: [
         {
           resourceId: "r-test-tool",
           resourceName: "test-tool",
           resourceType: "SKILL",
-          downloadUrl: "https://acct-ram.agentrun-data.cn-hangzhou.aliyuncs.com/skills/test-tool/package.zip",
+          downloadUrl: "https://tools.example.com/skills/test-tool/package.zip",
         },
       ],
     });
@@ -199,7 +199,7 @@ describe("LoopRunner", () => {
   });
 
   it("handles thrown errors in the run loop", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const request = makeRunRequest({ conversationId: "err-sess" });
     (request as any).events = null;
 
@@ -213,7 +213,7 @@ describe("LoopRunner", () => {
   });
 
   it("passes model config", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const request = makeRunRequest({
       model: { provider: "openai", model: "gpt-4o" },
     });

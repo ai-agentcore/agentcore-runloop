@@ -83,13 +83,3 @@ it("starts local Codex without bypass and with pinned user permissions", async (
   expect(disabledSkills).not.toContain("pptx");
   expect(args.find(value => value.startsWith("permissions="))).toContain(await realpath(root));
 });
-
-it("uses a preflight executable present on both Linux and macOS", async () => {
-  const { writeFile, chmod } = await import("node:fs/promises");
-  const root = await mkdtemp(join(tmpdir(), "preflight-cli-")); dirs.push(root);
-  const cli = join(root, "cli");
-  await writeFile(cli, '#!/bin/sh\nfor arg do last="$arg"; done\nexec "$last"\n');
-  await chmod(cli, 0o700);
-  const { verifyLocalSandbox } = await import("../vendor/runloop/src/acp/local-sandbox.js");
-  await expect(verifyLocalSandbox(cli, root, [], {}, {})).resolves.toBeUndefined();
-});

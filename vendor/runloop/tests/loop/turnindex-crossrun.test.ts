@@ -11,9 +11,9 @@ async function collect(gen: AsyncGenerator<RunloopEvent>): Promise<RunloopEvent[
 
 describe("turnIndex cross-run continuation (doc-vs-code)", () => {
   it("starts the new run's turnIndex from last history turn.end.turnIndex + 1", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const req: RunRequest = {
-      agent: { cli: "echo" },
+      agent: { cli: "codex" },
       events: [
         { type: "user.message", content: "first" },
         { type: "turn.end", turnIndex: 2, stopReason: "end_turn" },
@@ -28,9 +28,9 @@ describe("turnIndex cross-run continuation (doc-vs-code)", () => {
   });
 
   it("starts at 0 when history has no turn.end", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const req: RunRequest = {
-      agent: { cli: "echo" },
+      agent: { cli: "codex" },
       events: [{ type: "user.message", content: "hi" }] as never,
       model: { provider: "t", model: "m", baseUrl: "http://127.0.0.1:1/v1", apiKey: "k" },
       credentials: { accessKeyId: "ak", accessKeySecret: "sk" },

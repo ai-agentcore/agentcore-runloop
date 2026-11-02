@@ -2,12 +2,6 @@ import { describe, it, expect, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
 import { ModelProviderProxy } from "@/provider/proxy.js";
 import { RouterPolicy } from "@/provider/router.js";
-import { buildClaudeCodeEnv } from "@/provider/inject-claude-code.js";
-import {
-  messagesRequestToChatCompletions,
-  createClaudeState,
-  chatCompletionChunkToClaudeEvents,
-} from "@/provider/translate-messages.js";
 import type { ChatCompletionChunk, ProviderConfig } from "@/provider/types.js";
 
 function mockUpstream(handler: (body: string, res: import("node:http").ServerResponse) => void): Promise<{ port: number; close: () => Promise<void> }> {
@@ -20,50 +14,6 @@ function mockUpstream(handler: (body: string, res: import("node:http").ServerRes
     server.listen(0, "127.0.0.1", () => resolve({ port: (server.address() as { port: number }).port, close: () => new Promise<void>((r) => server.close(() => r())) }));
   });
 }
-
-describe("translate-messages — tool_use / tool_result / tools", () => {
-  it("translates Anthropic tool blocks + tools field into Chat", () => {
-    const cc = messagesRequestToChatCompletions({
-      model: "claude-3",
-      system: "be brief",
-      tools: [{ name: "get_weather", description: "weather", input_schema: { type: "object", properties: { city: { type: "string" } } } }],
-      messages: [
-        { role: "user", content: "weather?" },
-        { role: "assistant", content: [
-          { type: "text", text: "let me check" },
-          { type: "tool_use", id: "tu-1", name: "get_weather", input: { city: "SF" } },
-        ] },
-        { role: "user", content: [
-          { type: "tool_result", tool_use_id: "tu-1", content: "sunny" },
-        ] },
-      ],
-    });
-    expect(cc.tools?.[0].function.name).toBe("get_weather");
-    expect(cc.tools?.[0].function.parameters).toMatchObject({ type: "object" });
-    const asst = cc.messages.find((m) => m.role === "assistant");
-    expect(asst?.tool_calls?.[0]).toMatchObject({ id: "tu-1", function: { name: "get_weather", arguments: JSON.stringify({ city: "SF" }) } });
-    const tool = cc.messages.find((m) => m.role === "tool");
-    expect(tool).toMatchObject({ tool_call_id: "tu-1", content: "sunny" });
-  });
-
-  it("streams Chat tool_calls back as Anthropic tool_use content blocks", () => {
-    const state = createClaudeState("msg_1", "claude-3");
-    const out: string[] = [];
-    const chunks: ChatCompletionChunk[] = [
-      { id: "c", object: "chat.completion.chunk", model: "m", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "tu-9", type: "function", function: { name: "do_x", arguments: "" } }] }, finish_reason: null }] },
-      { id: "c", object: "chat.completion.chunk", model: "m", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '{"a":1}' } }] }, finish_reason: null }] },
-      { id: "c", object: "chat.completion.chunk", model: "m", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] },
-    ];
-    for (const ch of chunks) out.push(...chatCompletionChunkToClaudeEvents(ch, state));
-    const joined = out.join("");
-    expect(joined).toContain('"type":"tool_use"');
-    expect(joined).toContain('"name":"do_x"');
-    expect(joined).toContain("input_json_delta");
-    expect(joined).toContain('partial_json'); // tool args streamed as input_json_delta
-    expect(joined).toContain('"stop_reason":"tool_use"');
-    expect(joined).toContain("message_stop");
-  });
-});
 
 describe("RouterPolicy — alias + fallback chain", () => {
   const a: ProviderConfig = { provider: "p", model: "model-a", baseUrl: "http://a/v1", apiKey: "k" };
@@ -90,15 +40,6 @@ describe("RouterPolicy — alias + fallback chain", () => {
     expect(r.resolve("nomatch").model).toBe("model-a"); // no "*" → first route
     const empty = new RouterPolicy({ routes: [] });
     expect(() => empty.resolve("x")).toThrow();
-  });
-});
-
-describe("inject-claude-code", () => {
-  it("builds ANTHROPIC_* env pointing at proxy /v1 with token + NO_PROXY", () => {
-    const env = buildClaudeCodeEnv({ proxyBaseUrl: "http://127.0.0.1:9999/", token: "tok-123" });
-    expect(env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:9999/v1");
-    expect(env.ANTHROPIC_API_KEY).toBe("tok-123");
-    expect(env.NO_PROXY).toContain("127.0.0.1");
   });
 });
 

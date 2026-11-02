@@ -16,7 +16,7 @@ async function collectEvents(
 
 function makeRunRequest(overrides: Partial<RunRequest> = {}): RunRequest {
   return {
-    agent: { cli: "echo" },
+    agent: { cli: "codex" },
     events: [
       createEvent(EventType.UserMessage, "s1", {
         content: "hello",
@@ -36,9 +36,9 @@ function makeRunRequest(overrides: Partial<RunRequest> = {}): RunRequest {
 
 describe("LoopRunner - maxTurns", () => {
   it("stops after maxTurns limit", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const request = makeRunRequest({
-      agent: { cli: "echo", maxTurns: 1 },
+      agent: { cli: "codex", maxTurns: 1 },
     });
 
     const events = await collectEvents(runner.run(request));
@@ -52,7 +52,7 @@ describe("LoopRunner - maxTurns", () => {
   });
 
   it("allows unlimited turns when maxTurns not set", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const request = makeRunRequest();
 
     const events = await collectEvents(runner.run(request));
@@ -63,9 +63,9 @@ describe("LoopRunner - maxTurns", () => {
 
 describe("LoopRunner - timeout", () => {
   it("interrupts session after timeout", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const request = makeRunRequest({
-      agent: { cli: "sleep", timeoutMs: 200 },
+      agent: { cli: "codex", timeoutMs: 200 },
     });
     request.events = [
       createEvent(EventType.UserMessage, "s1", {
@@ -85,28 +85,6 @@ describe("LoopRunner - timeout", () => {
   });
 });
 
-describe("LoopRunner - adapter selection", () => {
-  it("uses default cli adapter", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
-    const events = await collectEvents(runner.run(makeRunRequest()));
-    expect(events.length).toBeGreaterThan(0);
-  });
-
-  it("uses stream-json adapter when configured", async () => {
-    const runner = new LoopRunner({ defaultAdapterType: "stream-json", allowUnregisteredAgents: true, });
-    const events = await collectEvents(runner.run(makeRunRequest()));
-    expect(events.length).toBeGreaterThan(0);
-  });
-
-  it("supports per-request adapter override", async () => {
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
-    const request = makeRunRequest();
-    (request as any).adapterType = "stream-json";
-
-    const events = await collectEvents(runner.run(request));
-    expect(events.length).toBeGreaterThan(0);
-  });
-});
 
 describe("LoopRunner - constructor options", () => {
   it("accepts llmJudge option", async () => {
@@ -142,7 +120,7 @@ describe("LoopRunner - 预发 model 凭证默认值（AGENTCORE_ENV）", () => {
     process.env.AGENTCORE_ENV = "pre";
     process.env.AGENTCORE_DEFAULT_MODEL_BASE_URL = "http://127.0.0.1:1/v1";
     process.env.AGENTCORE_DEFAULT_MODEL_API_KEY = "test-default-key";
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const events = await collectEvents(runner.run(reqNoCreds()));
     expect(events.some(requiredErr)).toBe(false);
   });
@@ -151,7 +129,7 @@ describe("LoopRunner - 预发 model 凭证默认值（AGENTCORE_ENV）", () => {
     delete process.env.AGENTCORE_ENV;
     process.env.AGENTCORE_DEFAULT_MODEL_BASE_URL = "http://127.0.0.1:1/v1";
     process.env.AGENTCORE_DEFAULT_MODEL_API_KEY = "test-default-key";
-    const runner = new LoopRunner({ allowUnregisteredAgents: true, defaultAdapterType: "cli" });
+    const runner = new LoopRunner({ agentRegistry: { codex: { command: new URL("../fixtures/mock-agent-cli.sh", import.meta.url).pathname } }, defaultAdapterType: "codex" });
     const events = await collectEvents(runner.run(reqNoCreds()));
     expect(events.some(requiredErr)).toBe(true);
   });

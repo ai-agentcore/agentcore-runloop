@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { __setSsrfLookupForTest, __setAgentrunHostCheckForTest } from "@/sidecar/ssrf.js";
+import { __setSsrfLookupForTest } from "@/sidecar/ssrf.js";
 import type { Resource, Credentials } from "@/types/resources.js";
 
 // 回归：下游 MCP（protocol=mcp）按 `mcpConfig.transport` 选客户端 transport。
@@ -14,13 +14,6 @@ const h = vi.hoisted(() => ({
   signedMethod: vi.fn(),
 }));
 
-vi.mock("@/sidecar/agentrun-sign.js", () => ({
-  buildSignedRequest: (method: string, url: string) => {
-    h.signedMethod(method);
-    // 含 host 头：mcp-proxy 合并签名头时应跳过 host（由 undici 从 signed.url 自设）。
-    return { url, headers: { "Agentrun-Authorization": "sig", host: "signed.example" } };
-  },
-}));
 
 vi.mock("@modelcontextprotocol/sdk/client/sse.js", () => ({
   SSEClientTransport: class {
@@ -67,12 +60,12 @@ beforeEach(() => {
   h.callTool.mockReset().mockResolvedValue({ content: [{ type: "text", text: "ok" }] });
   h.signedMethod.mockReset();
   __setSsrfLookupForTest(async () => [{ address: "203.0.113.1" }]);
-  __setAgentrunHostCheckForTest(false); // 用本地/mock host 验证签名管路；R1 拦截行为另由 ssrf/mcp-proxy 专门用例覆盖
+   // 用本地/mock host 验证签名管路；R1 拦截行为另由 ssrf/mcp-proxy 专门用例覆盖
 });
 afterEach(() => {
   vi.unstubAllGlobals();
   __setSsrfLookupForTest(null);
-  __setAgentrunHostCheckForTest(true);
+
 });
 
 describe("mcp-proxy transport dispatch", () => {
@@ -99,39 +92,7 @@ describe("mcp-proxy transport dispatch", () => {
     await expect(listDownstreamMcpTools(res("stdio"), CREDS)).rejects.toThrow(/stdio.*not supported/);
   });
 
-  it("agentrun 签名 fetch：未设 method 默认按 GET 签（SSE 建流 GET，不再误签 POST）", async () => {
-    await listDownstreamMcpTools(res("sse", "agentrun"), CREDS);
-    const opts = h.sseCtor.mock.calls[0][1] as { fetch?: typeof fetch };
-    expect(typeof opts.fetch).toBe("function");
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })) as unknown as typeof fetch);
-
-    const url = "https://host.example.com/sse";
-    await opts.fetch!(url); // EventSource 建流：不带 method
-    await opts.fetch!(url, { method: "POST", body: "{}" }); // 回发消息：显式 POST
-
-    expect(h.signedMethod).toHaveBeenNthCalledWith(1, "GET"); // 默认 GET（旧实现误签 POST）
-    expect(h.signedMethod).toHaveBeenNthCalledWith(2, "POST");
-  });
-
-  it("签名 fetch：URL/Request 入参 + 非字符串 body + host 头跳过", async () => {
-    await listDownstreamMcpTools(res("sse", "agentrun"), CREDS);
-    const opts = h.sseCtor.mock.calls[0][1] as { fetch?: typeof fetch };
-    const seen: Array<Record<string, string>> = [];
-    vi.stubGlobal("fetch", vi.fn(async (_u: unknown, init?: RequestInit) => {
-      const hdr: Record<string, string> = {};
-      new Headers(init?.headers).forEach((v, k) => (hdr[k] = v));
-      seen.push(hdr);
-      return new Response("{}", { status: 200 });
-    }) as unknown as typeof fetch);
-    await opts.fetch!(new URL("https://h.example.com/x"));                       // URL 入参
-    await opts.fetch!(new Request("https://h.example.com/y"));                   // Request 入参
-    await opts.fetch!("https://h.example.com/z", { body: new Uint8Array([1]), headers: { accept: "x" } }); // 非字符串 body
-    expect(seen.length).toBe(3);
-    expect(seen[2].host).toBeUndefined();  // 签名头里的 host 被跳过（由 undici 自设）
-    expect(seen[2].accept).toBe("x");      // transport headers 保留
-    expect(seen[2].authorization || seen[2]["agentrun-authorization"]).toBeTruthy(); // 签名头注入
-  });
 
   it("callDownstreamMcpTool：非 text content / 空 content 回落 / isError / 抛错", async () => {
     // 非 text content（JSON.stringify 包裹）

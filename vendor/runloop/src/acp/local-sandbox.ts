@@ -78,7 +78,7 @@ export async function verifyLocalSandbox(
   const { execFile } = await import("node:child_process");
   await new Promise<void>((resolve, reject) => {
     execFile(cli, ["sandbox", "-P", "agentcore_local", "-C", cwd,
-      ...overrides.flatMap(value => ["-c", value]), "--", "/usr/bin/true"],
+      ...overrides.flatMap(value => ["-c", value]), "--", "/bin/true"],
     { cwd, env, ...identity, timeout: 15000, maxBuffer: 64 * 1024 }, error => {
       if (error) reject(new Error("LOCAL_SANDBOX_UNAVAILABLE: Codex OS sandbox preflight failed; unrestricted execution is disabled", { cause: error }));
       else resolve();

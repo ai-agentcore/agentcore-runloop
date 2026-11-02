@@ -88,31 +88,7 @@ export function extractA2aCardEndpoint(card: unknown): string | undefined {
   return undefined;
 }
 
-/**
- * 从 A2A AgentCard URL 推导调用基址：去掉末尾的 well-known agent-card 文件 + 尾斜杠。
- * 例：`.../invocations/.well-known/agent-card.json` → `.../invocations`。平台托管 a2a 用它（见 chooseA2aServiceEndpoint）。
- */
-export function deriveA2aBaseFromCardUrl(cardUrl: string): string {
-  try {
-    const u = new URL(cardUrl);
-    u.pathname = u.pathname.replace(/\/\.well-known\/agent(-card)?\.json$/, "");
-    return u.toString().replace(/\/+$/, "");
-  } catch {
-    return cardUrl.replace(/\/\.well-known\/agent(-card)?\.json$/, "").replace(/\/+$/, "");
-  }
-}
-
-/**
- * 选 A2A message/stream 服务端点（agent-card 发现后）。
- *
- * - **平台托管**（`auth.mode=agentrun`，cardUrl 是 agentrun 数据面）：agent 在容器内 listen localhost，
- *   AgentCard.url 也写容器内地址（如 `http://localhost:9000`）、**不可外部访问**；对外经数据面 `invocations`
- *   路径反代。故忽略 card 内 url，用 cardUrl 的 invocations 基址（`deriveA2aBaseFromCardUrl`）。否则取
- *   card.url=localhost → 二次 SSRF 必被拦（预发实测 `blocked sub-agent target: ... not in allowlist: localhost`）。
- * - **外部**（`auth.mode=none`）：信 AgentCard.url（标准 A2A，agent 自声明公网端点；本地 mock 同此路径）。
- */
-export function chooseA2aServiceEndpoint(card: unknown, cardUrl: string, authMode: string): string | undefined {
-  if (authMode === "agentrun") return deriveA2aBaseFromCardUrl(cardUrl);
+export function chooseA2aServiceEndpoint(card: unknown, _cardUrl: string, _authMode: string): string | undefined {
   return extractA2aCardEndpoint(card);
 }
 

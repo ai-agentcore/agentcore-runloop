@@ -2,14 +2,13 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import { nanoid } from "nanoid";
 import type { NonMcpResources, ToolCallContext, McpToolResult, McpToolDescriptor } from "../mcp/types.js";
 import type { Credentials, HitlConfig, Resource } from "../types/resources.js";
-import { RemoteSandboxBackend, type ExecBackend } from "./exec-backend.js";
+import { type ExecBackend } from "./exec-backend.js";
 import { SKILL_TOOL_DESCRIPTORS } from "./skill-tools.js";
 import type { RunloopEvent } from "../types/events.js";
 import { EventType } from "../types/events.js";
 import { createEvent } from "../events/factory.js";
 import { buildToolDescriptors, findResolvedTool, handleToolCall, resolveToolTarget } from "../mcp/tool-registry.js";
 import { computeBindingHash } from "../hitl/binding.js";
-import { SandboxProvisioner, createArSandboxProvisioner } from "./sandbox-provisioner.js";
 import { SHELL_TOOL_DESCRIPTOR, SHELL_TOOL_NAME } from "./shell-exec.js";
 import { evaluateStaticRules } from "../hitl/rules.js";
 import type { LlmJudge } from "../hitl/judge.js";
@@ -150,12 +149,9 @@ export interface SidecarServerOptions {
   conversationId?: string;
   /** HITL 配置（主轨静态规则）；enabled 时辅轨 ask 原语 request_user_input 也可用 */
   hitl?: HitlConfig;
-  /** 透传到下游 agentrun 资源调用的全局 header */
   headers?: Record<string, string>;
   /** HITL 挂起屏障回调：sidecar 决定挂起后通知 runner 立即中断 codex */
   onSuspend?: () => void;
-  /** 沙箱实例编排（SANDBOX_TEMPLATE 懒创建/回收）；缺省时若有 SANDBOX_TEMPLATE 资源则自建真实 AR provisioner，测试可注入 mock。 */
-  sandboxProvisioner?: SandboxProvisioner;
   /** HITL 第三轨（AD-004 三层）：静态规则放行时再问 LLM judge（reason:llm_judge） */
   llmJudge?: LlmJudge;
   /** HITL NL 降级措辞服务（AD-026 增补）：suspend 时生成 prompt + 肯定/否定触发词；缺省走静态模板兜底（无模型调用）。 */
@@ -176,20 +172,13 @@ export interface SidecarServerOptions {
   imageCredentialName?: string;
   /** 内置 `shell` 工具的执行工作目录（通常为会话 workspace）。 */
   workdir?: string;
-  /**
-   * 系统实例远端执行（AGENTCORE_REMOTE_SHELL）：注入此 Sandbox 资源后，bash/文件工具一律打到该隔离沙箱数据面
-   * （不在本地 fs 落地）。未设 → 走本地后端（workdir）。
-   */
-  remoteExecSandbox?: Resource;
-  /** 沙箱内运行目录（复用 request.agent.cwd）：远端 bash 的 cwd / 相对文件路径基址 / skill 同步根。 */
-  remoteExecCwd?: string;
   /** Deployment-owned execution backend (for example Alibaba Cloud Agent Sandbox via E2B). */
   execBackend?: ExecBackend;
   logger?: LoggerOptions;
 }
 
 /**
- * Sidecar HTTP server — 进程内启动，暴露简单 REST API 供 workspace 内的 CLI 脚本调用。
+ * Sidecar HTTP server — 进程内工具执行与审批服务。
  * 类似 k8s sidecar：与主进程同生命周期，不跨网络，只监听 127.0.0.1。
  */
 export class SidecarServer {
@@ -206,9 +195,7 @@ export class SidecarServer {
   private readonly clientTools: ClientTool[];
   private readonly grantedAllow: Set<string>;
   private readonly grantedReject: Set<string>;
-  private readonly sandboxProvisioner?: SandboxProvisioner;
   private readonly execShell: boolean;
-  private readonly remoteBackend?: RemoteSandboxBackend;
   private readonly log: Logger;
 
   constructor(options: SidecarServerOptions) {
@@ -223,17 +210,9 @@ export class SidecarServer {
     this.clientTools = options.clientTools ?? [];
     this.grantedAllow = options.grantedAllow ?? new Set();
     this.grantedReject = options.grantedReject ?? new Set();
-    this.log = new Logger("agentrun", options.logger ?? {});
-    // 仅当存在 SANDBOX_TEMPLATE 资源时才建 provisioner（避免无谓的 AR client）；可注入 mock。
-    const hasTemplate = options.resources.sandboxes.some((s) => s.resourceType === "SANDBOX_TEMPLATE");
-    this.sandboxProvisioner = options.sandboxProvisioner ?? (hasTemplate ? createArSandboxProvisioner(this.log) : undefined);
+    this.log = new Logger("runloop", options.logger ?? {});
     this.execShell = options.execShell ?? false;
-    // 系统实例远端执行：bash/文件工具改打隔离沙箱数据面（密钥不外泄）；未设则走本地后端。
-    // cwd 复用 request.agent.cwd（remoteExecCwd）作沙箱内运行目录 / skill 同步根。
-    this.remoteBackend = options.remoteExecSandbox
-      ? new RemoteSandboxBackend(options.remoteExecSandbox, options.credentials, this.sandboxProvisioner, options.remoteExecCwd, this.log)
-      : undefined;
-    const execBackend = options.execBackend ?? this.remoteBackend;
+    const execBackend = options.execBackend;
     this.ctx = {
       resources: options.resources,
       credentials: options.credentials,
@@ -241,7 +220,6 @@ export class SidecarServer {
       conversationId: options.conversationId,
       headers: options.headers,
       onSuspend: options.onSuspend,
-      sandboxProvisioner: this.sandboxProvisioner,
       workdir: options.workdir,
       execBackend,
       imageTools: options.imageCredentialProvider && options.workdir && !execBackend
@@ -296,7 +274,6 @@ export class SidecarServer {
   /**
    * 带 HITL 主轨闸门的工具执行（AD-026）：先过 maybeSuspend（静态规则/辅轨/judge + 粘性授权），
    * 命中即返回 pending 结果（已 emit suspend 事件 + 通知 runner 中断）；否则正常 handleToolCall。
-   * 这是**唯一**对外的"受闸门保护"的执行入口——sidecar `.tools/agentrun` 与进程内 MCP server 共用它，
    * 保证无论 codex 经 shell 还是原生 MCP 调用，主轨拦截都生效。
    */
   async gatedExecute(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
@@ -324,24 +301,6 @@ export class SidecarServer {
     // HITL 辅轨：暴露单一 ask 原语 request_user_input（吸收旧 request_confirmation）。
     if (this.hitl?.enabled) tools.push(REQUEST_USER_INPUT_DESCRIPTOR);
     return tools;
-  }
-
-  /**
-   * 会话级远端环境初始化（仅有 Sandbox）：让沙箱内 read_file/bash 能读取并执行 skill。
-   * **默认链路（Change B / option b）**：在沙箱内直接 curl 下载 + 解包 skill（二进制安全、不经本地盘）。
-   * 旧链路 `RemoteSandboxBackend.initEnvironment`（本地解包 → 数据面 text writeFile 同步）作为死代码保留——
-   * 它对二进制不安全（utf8 同步损坏），仅在需回退时手动切回。best-effort——失败仅警告、不阻断 run。
-   */
-  async initRemoteSandbox(_opts: { localWorkspaceDir: string }): Promise<void> {
-    if (!this.remoteBackend) return;
-    try {
-      const n = await this.remoteBackend.downloadSkillsIntoSandbox(this.resources.skills ?? []);
-      this.log.info("remote sandbox skills downloaded", { skills: n });
-    } catch (err) {
-      this.log.warn("remote sandbox skill download failed (non-fatal)", {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
   }
 
   /** HITL 辅轨是否启用（runner 据此给 MCP server 传 extraTools）。 */
@@ -448,7 +407,6 @@ export class SidecarServer {
   async stop(): Promise<void> {
     this.log.info("sidecar stopping", { port: this._port });
     // 会话结束：回收所有懒创建的沙箱实例（best-effort，不阻断关闭）。
-    await this.sandboxProvisioner?.recycleAll(this.ctx.credentials).catch(() => {});
     return new Promise((resolve) => {
       if (this.server) {
         this.server.close(() => resolve());
@@ -460,7 +418,6 @@ export class SidecarServer {
 
   /**
    * 判定一次工具调用是否需 HITL 挂起。挂起时产出 toolcall.start→end→suspend 三事件（共享 toolCallId），
-   * 通知 runner 中断 codex（硬执行屏障），并返回 pending 结果给 .tools/agentrun（codex 随即被 kill）。
    * 返回 null 表示无需挂起、照常执行。
    */
   private async maybeSuspend(name: string, args: Record<string, unknown>): Promise<GateResult | null> {

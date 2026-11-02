@@ -3,7 +3,7 @@
   "version": "0.1.1",
   "private": true,
   "type": "module",
-  "description": "Runloop CLI execution engines powered by Alibaba Cloud AgentCore",
+  "description": "Codex execution Harness on Alibaba Cloud AgentCore",
   "engines": {
     "node": ">=22"
   },
@@ -17,13 +17,10 @@
     "test:upstream": "cd vendor/runloop && vitest run tests/acp tests/events tests/provider tests/mcp --pool=forks --maxWorkers=1",
     "verify": "npm run typecheck && npm run test:coverage && npm run build",
     "dev:mock": "AGENTCORE_MOCK=true tsx src/main.ts",
-    "test:coverage": "vitest run --coverage",
-    "smoke:native-service": "node scripts/smoke-native-service.mjs",
-    "verify:linux-sessions": "node scripts/verify-linux-sessions.mjs"
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@alicloud/agentidentitydata20251127": "2.0.0",
-    "@alicloud/agentrun20250910": "^5.9.1",
     "@alicloud/fcsandbox20260509": "^1.5.1",
     "@alicloud/openapi-core": "1.0.8",
     "@darabonba/typescript": "1.0.5",

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createServer, type Server } from "node:http";
 import { buildToolDescriptors, handleToolCall, resolveToolTarget, buildToolIndex, findResolvedTool, buildOutboundNameMap } from "@/mcp/tool-registry.js";
-import { __setAgentrunHostCheckForTest } from "@/sidecar/ssrf.js";
 import type { NonMcpResources, ToolCallContext } from "@/mcp/types.js";
 import type { Resource } from "@/types/resources.js";
 
@@ -23,8 +22,8 @@ function stubOpenapiFetch(responseBody: unknown, status = 200) {
 }
 // 委派/子 agent 用例连本地 mock（127.0.0.1）+ agentrun mode；R1 域名白名单会拦 loopback，
 // 故管路类用例临时关校验（拦截行为另由 ssrf/sub-agent-caller 专门用例覆盖，不削弱生产）。
-beforeEach(() => __setAgentrunHostCheckForTest(false));
-afterEach(() => { vi.unstubAllGlobals(); __setAgentrunHostCheckForTest(true); });
+
+afterEach(() => { vi.unstubAllGlobals();  });
 
 const EMPTY: NonMcpResources = {
   tools: [],
@@ -105,7 +104,7 @@ function subAgent(
           paths: { "/invoke": { post: { operationId: "invoke" } } },
         }
       : undefined,
-    auth: { mode: "agentrun" },
+    auth: { mode: "none" },
   };
 }
 
@@ -118,7 +117,7 @@ function skill(resourceId: string, resourceName: string, opts?: { description?: 
     protocol: "openapi",
     openapiConfig: {
       openapi: "3.0.0",
-      servers: [{ url: "https://acct.agentrun-data.cn-hangzhou.aliyuncs.com" }],
+      servers: [{ url: "https://tools.example.com" }],
       paths: { [`/skills/${resourceName}/download`]: { get: { operationId: "download" } } },
     },
   };
@@ -734,23 +733,6 @@ describe("handleToolCall", () => {
       expect(data.result).toContain("hello from sub-agent");
     });
 
-    it("SANDBOX_TEMPLATE: 懒创建绑定 serverUrl 后再发 openapi 调用", async () => {
-      const spy = stubOpenapiFetch({ ok: true });
-      // 模板：openapiConfig serverUrl 空，operationId=tpl_exec
-      const tmpl = openapiTool("tpl-1", "py", "SANDBOX_TEMPLATE", "tpl_exec", { serverUrl: "", path: "/exec" });
-      const ensureServerUrl = vi.fn(async () => "https://inst.example.com");
-      const c: ToolCallContext = {
-        resources: { ...EMPTY, sandboxes: [tmpl] },
-        credentials: { accessKeyId: "ak", accessKeySecret: "sk", accountId: "1", region: "cn-hangzhou" },
-        sandboxProvisioner: { ensureServerUrl } as never,
-      };
-      const res = await handleToolCall("sandbox__py__tpl_exec", { code: "print(1)" }, c);
-      expect(res.isError).toBe(false);
-      expect(ensureServerUrl).toHaveBeenCalledOnce();
-      // 调用打到懒创建出的实例 endpoint
-      const calledUrl = String(spy.mock.calls.find((c2) => !String(c2[0]).includes("127.0.0.1"))?.[0]);
-      expect(calledUrl).toBe("https://inst.example.com/exec");
-    });
   });
 });
 

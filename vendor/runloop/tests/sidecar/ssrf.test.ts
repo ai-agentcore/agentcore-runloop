@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { assertOutboundAllowed, assertAgentrunHostAllowed, isBlockedAddress, SsrfBlockedError, __setSsrfLookupForTest } from "@/sidecar/ssrf.js";
+import { assertOutboundAllowed, isBlockedAddress, SsrfBlockedError, __setSsrfLookupForTest } from "@/sidecar/ssrf.js";
 
 afterEach(() => __setSsrfLookupForTest(null));
 
@@ -57,30 +57,5 @@ describe("assertOutboundAllowed", () => {
   it("rejects when DNS resolution fails", async () => {
     __setSsrfLookupForTest(async () => { throw new Error("ENOTFOUND"); });
     await expect(assertOutboundAllowed("https://nope.example.com/")).rejects.toThrow(/dns lookup failed/);
-  });
-});
-
-describe("assertAgentrunHostAllowed (R1)", () => {
-  it("allows aliyun agentrun domains（含 VPC dns-mapping 的 aliyun host）", () => {
-    for (const url of [
-      "https://1234567890123456.agentrun-data.cn-hangzhou.aliyuncs.com/tools/x",
-      "https://1234567890123456.funagent-data-pre.cn-hangzhou.aliyuncs.com/tools/x",
-      "https://acct.agentrun-data-vpc.cn-hangzhou.aliyuncs.com/x",
-      "https://nlb-xxx.cn-hangzhou.nlb.aliyuncsslb.com/x",
-    ]) {
-      expect(() => assertAgentrunHostAllowed(url), url).not.toThrow();
-    }
-  });
-
-  it("rejects IP 字面量（元数据/环回/私网）", () => {
-    for (const url of ["http://169.254.169.254/x", "http://127.0.0.1:8080", "http://10.0.0.5/x", "http://[::1]/x"]) {
-      expect(() => assertAgentrunHostAllowed(url), url).toThrow(SsrfBlockedError);
-    }
-  });
-
-  it("rejects 任意外部域名 + 非 http(s) 协议", () => {
-    expect(() => assertAgentrunHostAllowed("https://evil.example.com/agentrun")).toThrow(/not in allowlist/);
-    expect(() => assertAgentrunHostAllowed("https://aliyuncs.com.evil.com/x")).toThrow(/not in allowlist/);
-    expect(() => assertAgentrunHostAllowed("file:///etc/passwd")).toThrow(SsrfBlockedError);
   });
 });

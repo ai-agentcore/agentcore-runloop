@@ -1,8 +1,7 @@
 import { buildToolIndex } from "../../../mcp/tool-registry.js";
 import type { NonMcpResources, McpToolDescriptor } from "../../../mcp/types.js";
 
-/** 资源暴露方式（与 features.toolBridge 对应）：mcp=原生工具直接调用；cli=.tools/agentrun shell 隧道。 */
-export type ResourceMode = "mcp" | "cli";
+export type ResourceMode = "mcp";
 
 /**
  * 只取某一类资源的工具描述符。**对全量资源构建索引再按类别过滤**（而非只喂该类资源）——
@@ -17,7 +16,6 @@ export function descriptorsFor(nonMcp: NonMcpResources, key: keyof NonMcpResourc
 /**
  * 渲染一组工具为 markdown：每个工具 `### name` + 描述 + 参数 + **一个调用示例**（按 mode）。
  * - mcp：`直接调用工具 \`name\`，参数示例：{...}`
- * - cli：`.tools/agentrun call name '{...}'`
  */
 /**
  * 按 schema 类型生成示例占位——只有 spec、没有真实样例时，占位也得**类型正确**：
@@ -65,13 +63,7 @@ export function renderToolList(descriptors: McpToolDescriptor[], mode: ResourceM
     }
     lines.push("");
     lines.push("示例：");
-    if (mode === "cli") {
-      lines.push("```bash");
-      lines.push(`.tools/agentrun call ${tool.name} '${JSON.stringify(exampleArgs)}'`);
-      lines.push("```");
-    } else {
       lines.push(`直接调用工具 \`${tool.name}\`，参数示例：\`${JSON.stringify(exampleArgs)}\``);
-    }
     lines.push("");
   }
   return lines.join("\n");

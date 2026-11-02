@@ -15,8 +15,8 @@ describe("metricsHttpMiddleware", () => {
     await app.request("/missing");
 
     const out = registry.render();
-    expect(out).toContain('agentrun_runloop_http_requests_total{method="GET",route="/v1/runs",status_class="2xx",error_type="none"} 1');
-    expect(out).toContain('agentrun_runloop_http_requests_total{method="GET",route="/missing",status_class="4xx",error_type="not_found"} 1');
+    expect(out).toContain('agentcore_runloop_http_requests_total{method="GET",route="/v1/runs",status_class="2xx",error_type="none"} 1');
+    expect(out).toContain('agentcore_runloop_http_requests_total{method="GET",route="/missing",status_class="4xx",error_type="not_found"} 1');
   });
 
   it("does not measure the scrape endpoint itself", async () => {
@@ -27,7 +27,7 @@ describe("metricsHttpMiddleware", () => {
 
     await app.request("/metrics");
     // No http_requests_total series should exist for the scrape.
-    expect(registry.render()).not.toContain("agentrun_runloop_http_requests_total");
+    expect(registry.render()).not.toContain("agentcore_runloop_http_requests_total");
   });
 
   it("metricsHandler returns Prometheus text content-type", async () => {
@@ -38,6 +38,6 @@ describe("metricsHttpMiddleware", () => {
     const res = await app.request("/metrics");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/plain");
-    expect(await res.text()).toContain('agentrun_runloop_events_total{event_type="run.start"} 1');
+    expect(await res.text()).toContain('agentcore_runloop_events_total{event_type="run.start"} 1');
   });
 });

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1120" viewBox="0 0 1440 1120" role="img" aria-labelledby="title desc">
   <title id="title">AgentCore Runloop 按需沙箱完整执行流程</title>
-  <desc id="desc">展示请求准备、纯对话旁路、首次工具调用惰性创建沙箱、凭证获取、会话复用、Skill 同步、超时回退、安全错误和租约释放。</desc>
+  <desc id="desc">展示请求准备、纯对话旁路、首次工具调用惰性创建沙箱、凭证获取、会话复用、Skill 同步、超时拒绝执行、安全错误和租约释放。</desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L8 3L0 6Z" fill="#475569"/></marker>
     <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L8 3L0 6Z" fill="#2563eb"/></marker>
@@ -62,9 +62,9 @@
   <path d="M618 752H376V780" class="arrow green"/><text x="438" y="771" class="small">模型继续推理 / 后续工具复用</text>
 
   <rect x="60" y="814" width="1320" height="170" rx="14" fill="#fff" stroke="#cbd5e1"/>
-  <text x="84" y="843" class="node">异常与降级分支</text>
+  <text x="84" y="843" class="node">异常处理分支</text>
   <g>
-    <rect x="84" y="864" width="370" height="92" rx="10" fill="#fff7ed" stroke="#fb923c"/><text x="102" y="889" class="node">SDK 请求超时 + 配置 WORKDIR</text><text x="102" y="912" class="label">尚未产生沙箱状态 → 文件 / Shell 后端切到</text><text x="102" y="932" class="small">&lt;WORKDIR&gt;/&lt;uid&gt;/&lt;conversationId&gt;；Skill、附件、发布同根</text>
+    <rect x="84" y="864" width="370" height="92" rx="10" fill="#fff7ed" stroke="#fb923c"/><text x="102" y="889" class="node">SDK 请求超时</text><text x="102" y="912" class="label">返回 SANDBOX_NOT_READY；不切换后端</text><text x="102" y="932" class="small">文件、Skill、附件和发布始终使用远端执行根</text>
     <rect x="535" y="864" width="370" height="92" rx="10" fill="#fef2f2" stroke="#fca5a5"/><text x="553" y="889" class="node">凭证 / 权限 / 模板 / 配额错误</text><text x="553" y="912" class="label">不回退本地 → 工具返回 SANDBOX_NOT_READY</text><text x="553" y="932" class="small">只保留 stage、causeType/code/status/requestId；模型仍可文本回复</text>
     <rect x="986" y="864" width="370" height="92" rx="10" fill="#eef2ff" stroke="#818cf8"/><text x="1004" y="889" class="node">附件等模型前置操作失败</text><text x="1004" y="912" class="label">无法安全启动 Agent → HTTP 503 / AG-UI RUN_ERROR</text><text x="1004" y="932" class="small">错误正文、stack、Key、Token 均不进入响应或日志</text>
   </g>

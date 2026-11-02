@@ -1,9 +1,7 @@
-// runloop 指标定义 + observe 方法。命名 `agentrun_runloop_*`，与 Go 侧 AgentRun
-// 及 super-agent（agentrun_super_agent_*）的命名规范对齐，便于同一 Grafana 里维度统一。
 
 import { MetricsRegistry, type Counter, type Gauge, type Histogram } from "./registry.js";
 
-const NS = "agentrun_runloop";
+const NS = "agentcore_runloop";
 
 // HTTP 时延桶（秒）：标准 web 请求量级。
 const HTTP_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10];

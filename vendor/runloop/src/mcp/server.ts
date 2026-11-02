@@ -20,7 +20,7 @@ import { envPositiveInt } from "../util/env.js";
 // 真正的工具调用不受此限（见 callDownstreamMcpTool，默认无界、env 可加上限）。
 const DOWNSTREAM_DISCOVERY_TIMEOUT_MS = envPositiveInt("AGENTCORE_MCP_DISCOVERY_TIMEOUT_MS", 300_000); // 5min
 
-export interface AgentrunMcpServerOptions {
+export interface RunloopMcpServerOptions {
   resources: NonMcpResources;
   credentials?: Credentials;
   emit?: (event: RunloopEvent) => void;
@@ -46,7 +46,7 @@ export interface AgentrunMcpServerOptions {
   logger?: LoggerOptions;
 }
 
-export class AgentrunMcpServer {
+export class RunloopMcpServer {
   private server: Server | null = null;
   private _port = 0;
   private readonly resources: NonMcpResources;
@@ -63,9 +63,9 @@ export class AgentrunMcpServer {
   private transport: StreamableHTTPServerTransport | null = null;
   private readonly log: Logger;
 
-  constructor(options: AgentrunMcpServerOptions) {
+  constructor(options: RunloopMcpServerOptions) {
     this.resources = options.resources;
-    this.log = new Logger("agentrun", options.logger ?? {});
+    this.log = new Logger("runloop", options.logger ?? {});
     this.ctx = {
       resources: options.resources,
       credentials: options.credentials,
@@ -98,7 +98,7 @@ export class AgentrunMcpServer {
     this.execute = options.executeTool ?? ((name, args) => handleToolCall(name, args, this.ctx));
 
     this.mcpServer = new McpServer(
-      { name: "agentrun-mcp", version: "0.1.0" },
+      { name: "runloop-mcp", version: "0.1.0" },
       // 声明 resources/prompts 能力（即便为空）：否则 SDK 不允许注册 resources/list 等处理器，
       // 且 codex 探这些方法会拿到 -32601。声明后我们返回空列表，codex 干净地知道"无资源可探"。
       { capabilities: { resources: {}, prompts: {} } },
@@ -317,7 +317,7 @@ export class AgentrunMcpServer {
           result: {
             protocolVersion: "2024-11-05",
             capabilities: { tools: {} },
-            serverInfo: { name: "agentrun-mcp", version: "0.1.0" },
+            serverInfo: { name: "runloop-mcp", version: "0.1.0" },
           },
         };
       case "tools/list":

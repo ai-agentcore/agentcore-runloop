@@ -93,7 +93,7 @@
   <text x="616" y="899" class="title">S3 · 准备远端执行根</text>
   <text x="616" y="921" class="body">Skill Bundle 分片批量导入，成功后写 ready marker</text>
   <text x="616" y="942" class="small">文件 API 与 commands.run 均限定在 SANDBOX_ROOT</text>
-  <text x="800" y="994" text-anchor="middle" class="body">首次 SDK 超时可切换 WORKDIR 本地回退</text>
+  <text x="800" y="994" text-anchor="middle" class="body">SDK 失败或超时均不回退本地</text>
   <text x="800" y="1015" text-anchor="middle" class="small">请求结束释放租约，但保留绑定供同会话复用</text>
 
   <circle cx="1122" cy="624" r="18" fill="#d97706"/><text x="1122" y="629" text-anchor="middle" font-size="13" font-weight="700" class="white">T</text>

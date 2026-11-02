@@ -50,7 +50,6 @@ function buildClientToolSteering(clientTools: RunRequest['clientTools']): string
     .map((ct) => `\`${CLIENT_TOOL_PREFIX}${sanitizeToolName(ct.name)}\``)
     .join('、');
   return joinMarkdown([
-    // h1：本段 unshift 到系统提示词最顶部，而 base(`# 身份与核心约束`)/resource(`# 可用的 AgentRun 工具`)
     // 都是 h1。用 h2 会让「h2 先于 h1」标题层级倒挂（评审 P2-3）；改 h1 与其它顶层段同级、也贴合「最高优先级」语义。
     '# 与用户交互（强制 · 最高优先级，覆盖下文任何「可用自然语言向用户询问」的说法）',
     `当你需要向用户**提问、索取缺失的必要信息（如用户未指定的城市/时间/对象）、澄清歧义、或让用户在选项中选择**时，**必须调用下面这些客户端工具之一**（${names}，按各工具描述选最贴合的，完整参数见文末「与用户交互（客户端工具 / HITL）」段），**禁止用纯文本向用户提问**。例：用户问「今天天气如何」但没说城市 → 调用其中能向用户展示候选项的工具，question=「想查哪个城市？」、choices=[北京,上海,杭州]。`,
@@ -103,12 +102,11 @@ function withIndent(text: string, indent: string = '    '): string {
 
 /** 从 RunRequest 解析资源暴露方式（features.toolBridge，缺省 mcp）。runner 据此 gate MCP server / CLI 脚本。 */
 export function resolveResourceMode(request: RunRequest): ResourceMode {
-  return (request.features?.toolBridge as string) === 'cli' ? 'cli' : 'mcp';
+  return 'mcp';
 }
 
 /**
  * 系统提示词主生成函数（写 AGENTS.md）。**入参为完整 RunRequest**，逐段编排：
- * 身份/环境硬约束 → 用户自定义 prompt → AgentRun 资源提示（按 features.toolBridge 选 mcp/cli 模板，
  * 每种资源类型由 prompts/resources/<type> 各自的生成函数渲染）。
  */
 export function buildSystemPrompt(request: RunRequest, opts?: { execToolsEnabled?: boolean }): string {
@@ -129,8 +127,6 @@ export function buildSystemPrompt(request: RunRequest, opts?: { execToolsEnabled
     ? convertResources(request.resources, { extractNonMcp: true }).nonMcpResources
     : undefined;
   // execToolsEnabled 决定 skill 读取措辞：有 shell → read_file/bash 读 .agents/skills/；无 shell → get_skill（唯一通道）。
-  // resourcePrompt 自带顶层标题 `# 可用的 AgentRun 工具`，**不再外包 `## AgentRun 资源提示`**——
-  // 否则 h1（# 可用的…）嵌在 h2（## AgentRun 资源提示）下、标题层级倒挂。
   const resourcePrompt = nonMcp ? buildResourcePrompt(nonMcp, mode, opts?.execToolsEnabled ?? false) : '';
   if (resourcePrompt) {
     parts.push(resourcePrompt);

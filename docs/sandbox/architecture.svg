@@ -65,5 +65,5 @@
   <rect x="924" y="700" width="260" height="72" rx="12" fill="#f8fafc" stroke="#94a3b8"/><text x="940" y="725" class="title">共享绑定存储（下一阶段）</text><text x="940" y="748" class="body">CAS / TTL / sandboxId / lease</text><text x="940" y="765" class="small">支持多副本与故障恢复</text>
 
   <path d="M658 356V700" class="edge dash"/><path d="M1036 618V700" class="edge dash"/><path d="M662 590V700" class="edge dash"/>
-  <text x="48" y="834" class="small">安全原则：超时整请求回退 · 不混用文件系统 · 不记录凭证/SDK 正文 · 路径限制在会话根 · 默认关闭公网</text>
+  <text x="48" y="834" class="small">安全原则：超时不回退本地 · 不混用文件系统 · 不记录凭证/SDK 正文 · 路径限制在会话根 · 默认关闭公网</text>
 </svg>

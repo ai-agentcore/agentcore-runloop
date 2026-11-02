@@ -8,7 +8,7 @@ const names = (gate: Parameters<typeof buildExtraTools>[0]): string[] =>
 const EXEC_FILE_TOOLS = ["bash", "read_file", "write_file", "edit_file", "grep", "glob"];
 const SKILL_TOOLS = ["get_skill"];
 
-describe("buildExtraTools —— agentrun-mcp 非资源工具门控", () => {
+describe("buildExtraTools —— runloop-mcp 非资源工具门控", () => {
   it("无 shell / 零执行 + 有 SKILL：注入 skill 读取工具，但不注入执行/文件工具", () => {
     // 系统实例 + 无 Sandbox（execToolsEnabled=false）+ 有 SKILL 资源 = AD-033 的「零执行态」。
     const n = names({ hitlEnabled: false, execToolsEnabled: false, hasSkills: true });

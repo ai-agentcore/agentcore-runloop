@@ -11,7 +11,6 @@ import { buildModelPrompt } from "../loop/prompt-builder.js";
 import { EventType, type RunloopEvent } from "../types/events.js";
 import { createEvent } from "../events/factory.js";
 import { EventStateMachine } from "../events/state-machine.js";
-import { isDelegationCommand } from "../sidecar/delegation.js";
 import { Logger, type LoggerOptions } from "../util/logger.js";
 
 /**
@@ -537,10 +536,6 @@ export class CodexAdapter implements AgentAdapter {
 
         if (itemType === "command_execution") {
           const command = (item.command as string) ?? "";
-          // 委派调用（.tools/agentrun call）的生命周期由 sidecar 拥有（同一 id 的 start→output_delta→result）。
-          // 抑制 codex 这张重复的 exec_command 卡片，避免双重渲染 + id 撕裂。
-          // codex 自身的 loop 不受影响：它通过 stdout/exit 读取结果继续，与上游 SSE 无关。
-          if (isDelegationCommand(command, this.delegationToolNames)) break;
           const toolCallId = (item.id as string) ?? `tc-${Date.now()}`;
           const exitCode = item.exit_code as number | null | undefined;
           events.push(...sm.toolCallStart(toolCallId, "exec_command"));

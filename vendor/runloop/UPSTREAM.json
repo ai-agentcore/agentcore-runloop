@@ -9,6 +9,7 @@
     "Align local MCP file/shell workdir with agent.cwd while keeping per-session runtime files separate",
     "Keep active model WebSocket requests alive beyond the idle timeout; cancel upstream on disconnect and suppress stale deltas",
     "Use the configured run deadline for Codex instead of a hidden five-minute timer; cancellation takes precedence over maxTurns",
-    "Use valid Codex API-key auth in exec, ACP and prewarm to avoid ChatGPT user-settings requests and their five-second startup timeout; persist only the local proxy token"
+    "Use valid Codex API-key auth in exec, ACP and prewarm to avoid ChatGPT user-settings requests and their five-second startup timeout; persist only the local proxy token",
+    "Codex-only AgentCore distribution: removed other CLI adapters and legacy AgentRun platform integrations."
   ]
 }

@@ -7,8 +7,6 @@ import type { Logger } from "../util/logger.js";
  * 下游的 URL、请求体、响应状态码与响应体**——子 agent 404（缺协议子路径）时只能靠推断，无法直接定位。
  * 这里在三个资源调用器（callSubAgent / callOpenapiTool / callDownstreamMcpTool）统一记录请求/响应内容。
  *
- * 安全：**不记录 headers**（agentrun 签名在 `Agentrun-Authorization` 头、apiKey 在 Authorization 头，避免泄露）；
- * URL 记的是端点（agentrun 签名不入 query、仅改写 host，无密钥）；body 截断防爆量。Logger 自身还会递归脱敏
  * apiKey/secret/token 等键。
  */
 
@@ -32,7 +30,6 @@ export interface ResourceRequestFields {
   /** 委派协议（subagent）：ag-ui / chat-completions / runloop / a2a。 */
   protocol?: string;
   method: string;
-  /** 出站端点（不含签名 query；agentrun 签名只在 header）。 */
   url: string;
   body?: string;
 }

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
-import { __setAgentrunHostCheckForTest } from "@/sidecar/ssrf.js";
 import { translateChildEvent } from "@/sidecar/event-translator.js";
 import { resolvePendingHitl, type ForwardNestedInput } from "@/hitl/resume.js";
 import { SidecarServer } from "@/sidecar/server.js";
@@ -133,8 +132,8 @@ describe("nested HITL — down-routing invariant (resolvePendingHitl)", () => {
 
 describe("nested HITL — delegation barrier (tool-registry)", () => {
   let server: Server | null = null;
-  beforeEach(() => __setAgentrunHostCheckForTest(false)); // 委派连本地 mock；R1 拦截另由专门用例覆盖
-  afterEach(() => { server?.close(); server = null; __setAgentrunHostCheckForTest(true); });
+   // 委派连本地 mock；R1 拦截另由专门用例覆盖
+  afterEach(() => { server?.close(); server = null;  });
 
   it("child suspend → delegation produces no toolresult + fires onSuspend (barrier)", async () => {
     // mock child runloop server streams a toolcall.suspend then ends
@@ -157,7 +156,7 @@ describe("nested HITL — delegation barrier (tool-registry)", () => {
           servers: [{ url: `http://127.0.0.1:${port}` }],
           paths: { "/invoke": { post: { operationId: "invoke" } } },
         },
-        auth: { mode: "agentrun" },
+        auth: { mode: "none" },
       }],
     };
     const emitted: RunloopEvent[] = [];
@@ -195,7 +194,7 @@ describe("nested HITL — sidecar.forwardNestedResolution (runloop child resume)
   // 而工具索引的 t.name 是压缩名——forwardNestedResolution 若按 t.name 严格匹配会落空 → 误判 forwarded_no_child
   // （本地短名不压缩故掩盖）。修复：用 findResolvedTool（两头通，匹配 name | rawName）。
   it("resolves a long (hash-compressed) delegation name via rawName (no forwarded_no_child)", async () => {
-    __setAgentrunHostCheckForTest(false);
+
     const server = createServer((_req, res) => {
       res.writeHead(200, { "content-type": "text/event-stream" });
       res.write(`data: ${JSON.stringify({ type: "message.delta", content: "CHILD_DONE_TOKEN" })}\n\n`);
@@ -219,7 +218,7 @@ describe("nested HITL — sidecar.forwardNestedResolution (runloop child resume)
           subAgents: [{
             resourceId: "a", resourceName: longName, resourceType: "AGENT", protocol: "runloop",
             openapiConfig: { openapi: "3.0.0", servers: [{ url: `http://127.0.0.1:${port}` }], paths: { "/invoke": { post: { operationId: "invoke" } } } },
-            auth: { mode: "agentrun" },
+            auth: { mode: "none" },
           }],
         },
         conversationId: CID,
@@ -232,14 +231,14 @@ describe("nested HITL — sidecar.forwardNestedResolution (runloop child resume)
       expect(String(r.delegationResult), "应拿到子 agent 的实际输出（向下转发成功）").toContain("CHILD_DONE_TOKEN");
     } finally {
       server.close();
-      __setAgentrunHostCheckForTest(true);
+
     }
   });
 
   // P3 多轮嵌套：子 agent resume 后又抛出新 suspend → forwardNestedResolution 收集子事件 + 标记 reSuspended，
   // 委派未完成（不产 delegationResult）；新子 suspend 带 parentToolCallId=委派 id 透传回父流。
   it("子 agent resume 后又挂起 → reSuspended + 透传新子 suspend（不产 delegationResult）", async () => {
-    __setAgentrunHostCheckForTest(false);
+
     const server = createServer((_req, res) => {
       res.writeHead(200, { "content-type": "text/event-stream" });
       res.write(`data: ${JSON.stringify({ type: "toolcall.suspend", toolCallId: "tc-child2", toolName: "db_drop", reason: "static_rule", options: [{ optionId: "ok", label: "allow", kind: "allow_once" }] })}\n\n`);
@@ -254,7 +253,7 @@ describe("nested HITL — sidecar.forwardNestedResolution (runloop child resume)
         resources: { tools: [], skills: [], sandboxes: [], subAgents: [{
           resourceId: "a", resourceName: "child", resourceType: "AGENT", protocol: "runloop",
           openapiConfig: { openapi: "3.0.0", servers: [{ url: `http://127.0.0.1:${port}` }], paths: { "/invoke": { post: { operationId: "invoke" } } } },
-          auth: { mode: "agentrun" },
+          auth: { mode: "none" },
         }] },
         conversationId: CID,
         credentials: { accessKeyId: "ak", accessKeySecret: "sk" },
@@ -269,7 +268,7 @@ describe("nested HITL — sidecar.forwardNestedResolution (runloop child resume)
       expect(r.childEvents?.every((e) => (e as { parentToolCallId?: string }).parentToolCallId === "d-1"), "子事件带 parentToolCallId=委派 id").toBe(true);
     } finally {
       server.close();
-      __setAgentrunHostCheckForTest(true);
+
     }
   });
 });

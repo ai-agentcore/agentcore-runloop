@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | English
 
-> **Deploy Codex on AgentCore.**
+> **An extensible Agent runtime framework, currently built on Codex and AgentCore.**
 > Skills · MCP tools · File and command execution · Streaming · Artifact delivery
 
 ## Overview
@@ -11,7 +11,7 @@
 
 Codex plans tasks, calls tools and continues based on execution results. AgentCore provides model connections, managed Skills, MCP resources and runtime infrastructure. This project connects them and exposes progress, tool events and final answers through AG-UI / SSE, with support for delivering generated files.
 
-This sample package targets AgentCore’s custom code / image deployment mode, with a container build and deployment guides. Change the model, bind business tools and Skills, and customize the system prompt to bring Codex execution into your application.
+This project targets AgentCore’s custom code / image deployment mode, with a container build and deployment guides. Combine model connections, Skills, MCP tools and execution backends for analysis, office workflows, development and knowledge services. Business requirements become reusable Skills, connectors and runtime capabilities. Codex is currently the only supported execution engine.
 
 [Deploy on AgentCore](docs/agentcore-guide.en.md) · [Application scenarios](#application-scenarios) · [Configuration reference](docs/reference.md)
 
@@ -59,10 +59,12 @@ These are ways to combine the available capabilities, **not verified customer ca
 | Operational data analysis | Read an uploaded CSV → run calculations → summarize findings → publish files | Markdown report and result CSV |
 | Enterprise knowledge and business queries | Query systems through MCP → apply rules from a Skill → explain the evidence | Answers with sources and structured results |
 | Document and code processing | Read workspace material → execute a Skill's checks or transformations → request approval when needed → deliver results | Review reports or transformed files |
+| Remote sandbox execution | Acquire a conversation sandbox on demand → import Skills and attachments → run file/shell operations → publish results | Execution results and artifacts; the E2B SDK connects to Alibaba Cloud Agent Sandbox |
+| Enterprise Skill assistants | Bind versioned Skills → prepare rules, scripts and templates → combine them with MCP tools | Reusable domain workflows with traceable Skill versions |
 
 For example, an operational analysis workflow could start with “Analyze this sales CSV, identify anomalies and generate a report.” Codex would read the attachment, run analysis scripts and deliver the report through `publish_artifact`. The application needs attachment storage and a file-serving service; business rules can live in Skills, and data queries can use MCP tools.
 
-These workflows still require end-to-end validation. Future case studies will include reproducible inputs, Skill/MCP configuration and actual deliverables.
+In sandbox mode, orchestration and model calls stay in the service container while file and shell operations run remotely. See the [scenario recipes and architecture (Chinese)](docs/scenarios/README.md) and [capability catalog (Chinese)](docs/scenarios/capabilities.md) for existing implementation, integration work and extension boundaries. These workflows still require end-to-end validation in the target environment.
 
 ## Performance
 
@@ -93,6 +95,8 @@ Customize behavior with `AGENTCORE_SYSTEM_PROMPT` and extend request handling in
 
 ## Documentation and development
 
+- [Scenario recipes (Chinese)](docs/scenarios/README.md): reusable workflows, architecture and acceptance criteria.
+- [Capability catalog (Chinese)](docs/scenarios/capabilities.md): implementation evidence and extension boundaries.
 - [Using this project on AgentCore](docs/agentcore-guide.en.md): preparation, deployment, verification and troubleshooting.
 - [中文部署教程](docs/agentcore-guide.md): Chinese deployment guide.
 - [Configuration and implementation reference (Chinese)](docs/reference.md): full API, environment, attachment, artifact and observability details.

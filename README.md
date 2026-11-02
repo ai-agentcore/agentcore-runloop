@@ -2,7 +2,7 @@
 
 简体中文 | [English](README.en.md)
 
-> **将 Codex 部署到 AgentCore。**
+> **可扩展的通用 Agent 运行时框架，当前基于 Codex 与 AgentCore。**
 > 技能 · MCP 工具 · 文件与命令执行 · 流式交互 · 结果交付
 
 ## 概要
@@ -11,9 +11,9 @@
 
 Codex 负责规划任务、调用工具并根据执行结果继续工作；AgentCore 提供模型连接、托管 Skill、MCP 资源和运行基础设施。本项目将两者连接起来，通过 AG-UI / SSE 向控制台或业务应用输出执行进度与最终答案，并支持交付生成的文件。
 
-这是面向 AgentCore 自定义代码 / 镜像模式的示例代码包，提供镜像构建和部署教程。你可以替换模型、绑定业务工具和技能、调整系统提示词，把 Codex 的执行能力接入自己的应用。
+项目面向 AgentCore 自定义代码 / 镜像模式，提供镜像构建和部署教程。通过组合模型连接、Skill、MCP 与执行后端，可以覆盖分析、办公、研发和知识服务等场景。业务需求优先沉淀为可复用的技能、工具连接器和运行时能力；当前执行内核仅支持 Codex。
 
-[开始部署](docs/agentcore-guide.md) · [应用场景](#应用场景) · [完整配置](docs/reference.md)
+[开始部署](docs/agentcore-guide.md) · [场景方案](docs/scenarios/README.md) · [通用能力目录](docs/scenarios/capabilities.md) · [完整配置](docs/reference.md)
 
 ```mermaid
 flowchart LR
@@ -59,10 +59,12 @@ flowchart LR
 | 运营数据分析 | 读取已上传的 CSV → 运行计算脚本 → 汇总异常和结论 → 发布文件 | Markdown 报告、结果 CSV |
 | 企业知识与业务查询 | 通过 MCP 查询业务系统 → 使用 Skill 中的规则处理结果 → 向用户说明依据 | 带来源的回答、结构化结果 |
 | 文档与代码处理 | 读取工作区材料 → 按 Skill 执行检查或转换 → 必要时请求确认 → 交付结果 | 检查报告、转换后的文件 |
+| 远程沙箱执行 | 按需创建会话工具沙箱 → 导入 Skill/附件 → 执行文件与 Shell 操作 → 发布结果 | 执行结果、代码与分析产物；使用 E2B SDK 对接阿里云 Agent Sandbox |
+| 企业 Skill 专业助手 | 绑定固定版本 Skill → 装配规则、脚本与模板 → 结合 MCP 完成领域任务 | 可复用、可追溯版本的业务处理流程 |
 
-例如，运营分析场景可以从“分析这份销售 CSV，找出异常并生成报告”开始，由 Codex 读取附件、调用分析脚本，再通过 `publish_artifact` 交付报告。接入应用需要配置附件存储和文件访问服务；业务规则可以封装为 Skill，数据查询可以接入 MCP。
+例如，运营分析场景可以从“分析这份销售 CSV，找出异常并生成报告”开始，由 Codex 读取附件、调用分析脚本，再通过 `publish_artifact` 交付报告。接入应用需要配置附件存储和文件访问服务；业务规则可以封装为 Skill，数据查询可以接入 MCP。需要独立工具环境时选择 `sandbox`：编排与模型调用仍在服务容器，文件和命令由远端沙箱执行。
 
-上述流程尚待端到端验证。后续案例将附上可复现的输入、Skill/MCP 配置与实际交付物。
+完整方案见[场景配方与架构](docs/scenarios/README.md)和[通用能力目录](docs/scenarios/capabilities.md)，涵盖现有实现、组合接入与扩展边界。上述业务流程仍需在目标环境端到端验证。
 
 ## 性能
 
@@ -93,6 +95,8 @@ curl -N http://127.0.0.1:8080/ag-ui/agent \
 
 ## 文档与开发
 
+- [场景方案](docs/scenarios/README.md)：业务需求、通用能力、场景组合与验收。
+- [通用能力目录](docs/scenarios/capabilities.md)：当前实现、源码入口和扩展边界。
 - [在 AgentCore 上使用](docs/agentcore-guide.md)：准备、部署、调试与排错。
 - [English deployment guide](docs/agentcore-guide.en.md)：英文使用路径。
 - [配置与实现参考](docs/reference.md)：接口、环境变量、附件、文件交付、观测和高级配置。
